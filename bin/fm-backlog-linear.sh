@@ -16,7 +16,7 @@
 #   fm-backlog-linear.sh start <issue>
 #   fm-backlog-linear.sh done <issue> [--pr <url>] [--report <path>] [--note <text>]
 #   fm-backlog-linear.sh hold <issue> --reason <text>
-#   fm-backlog-linear.sh resolve <issue> [--decision-file <path>] [--keep-held]
+#   fm-backlog-linear.sh resolve <issue> [--key <slug>] [--decision-file <path>] [--keep-held]
 #   fm-backlog-linear.sh attach-pr <issue> <pr-url>
 #
 # list    - the durable queue: non-archived issues assigned to the key's viewer
@@ -58,6 +58,12 @@ fail() {
 require_identifier() {  # <value>
   fm_linear_identifier_valid "${1:-}" \
     || fail "expected a Linear issue identifier like GAL-8, got: ${1:-}"
+}
+
+require_slug() {
+  case "${1:-}" in
+    ''|*[!A-Za-z0-9._-]*) fail "expected a non-empty privacy-safe slug, got: ${1:-}" ;;
+  esac
 }
 
 command_viewer() {
@@ -207,12 +213,13 @@ command_hold() {
 }
 
 command_resolve() {
-  local id=${1:-} decision_file='' decision='' keep_held=0 issue uuid label_id comment
+  local id=${1:-} key='' decision_file='' decision='' keep_held=0 issue uuid label_id comment
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   require_identifier "$id"
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
+      --key) shift; key=${1:-}; require_slug "$key" ;;
       --decision-file) shift; decision_file=${1:-} ;;
       --keep-held) keep_held=1 ;;
       *) usage >&2; exit 2 ;;
@@ -227,9 +234,15 @@ command_resolve() {
   issue=$(fm_linear_issue_json "$id") || exit 1
   uuid=$(printf '%s' "$issue" | jq -r '.id')
   if [ -n "$decision" ]; then
-    comment="Captain decision:
+    if [ -n "$key" ]; then
+      comment="Captain decision [$key]:
 
 $decision"
+    else
+      comment="Captain decision:
+
+$decision"
+    fi
     fm_linear_comment_once "$id" "$uuid" "$comment" >/dev/null
   fi
   if [ "$keep_held" = 1 ]; then

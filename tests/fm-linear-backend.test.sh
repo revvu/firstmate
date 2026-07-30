@@ -388,6 +388,35 @@ test_resolve_comments_and_clears_label() {
   pass "resolve deduplicates the decision comment and manages the label"
 }
 
+test_resolve_deduplicates_per_hold_key() {
+  local home fb out
+  home=$(make_home resolve-keys)
+  fb=$(make_fake_curl "$home")
+  printf 'Use the staged rollout.\n' > "$home/decision.md"
+  out=$(env FM_FAKE_ISSUE_LABELED=1 FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$CLI" resolve GAL-8 --key route-a \
+    --decision-file "$home/decision.md" --keep-held) || fail "first keyed resolve failed"
+  grep -F 'commentCreate(' "$home/curl.log" | grep -F 'Captain decision [route-a]' >/dev/null \
+    || fail "the first keyed resolution must carry its hold key"
+  : > "$home/curl.log"
+  out=$(env FM_FAKE_ISSUE_LABELED=1 \
+    FM_FAKE_COMMENTS_JSON='["Captain decision [route-a]:\n\nUse the staged rollout."]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$CLI" resolve GAL-8 --key route-b \
+    --decision-file "$home/decision.md" --keep-held) || fail "second keyed resolve failed"
+  grep -F 'commentCreate(' "$home/curl.log" | grep -F 'Captain decision [route-b]' >/dev/null \
+    || fail "identical decision text for a distinct hold key must post a separate milestone"
+  : > "$home/curl.log"
+  out=$(env FM_FAKE_ISSUE_LABELED=1 \
+    FM_FAKE_COMMENTS_JSON='["Captain decision [route-a]:\n\nUse the staged rollout.","Captain decision [route-b]:\n\nUse the staged rollout."]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$CLI" resolve GAL-8 --key route-b \
+    --decision-file "$home/decision.md" --keep-held) || fail "retried keyed resolve failed"
+  grep -F 'commentCreate(' "$home/curl.log" >/dev/null \
+    && fail "a retried resolution for the same hold key must not duplicate its milestone"
+  pass "resolve milestone idempotency is scoped to each hold key"
+}
+
 test_attach_pr_validates_url() {
   local home fb rc=0
   home=$(make_home attach)
@@ -438,10 +467,12 @@ test_bearings_linear_projection() {
 
 ## Done
 - [x] mate-landed - Local landed row https://github.com/acme/repo/pull/40 (repo: firstmate) (kind: ship) (merged 2026-07-30)
+- [x] mate-landed-two - Second local landed row https://github.com/acme/repo/pull/41 (repo: firstmate) (kind: ship) (merged 2026-07-29)
 EOF
   printf 'window=fm-local-task\nendpoint_task_id=local-task\nlinear=QB-9\n' > "$home/state/local-task.meta"
   printf 'linear=QB-4\n' > "$home/state/stale-task.meta"
-  out=$(env FM_SNAPSHOT_SECONDMATE_QUEUED=1 FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+  out=$(env FM_SNAPSHOT_SECONDMATE_QUEUED=1 FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME=1 \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
     PATH="$fb:$PATH" "$BEARINGS" --json) \
     || fail "bearings under the linear backend failed"
   assert_eq "$(printf '%s' "$out" | jq -r '.backlog_backend')" linear "model carries the backend marker"
@@ -459,8 +490,8 @@ EOF
     || fail "a local secondmate captain hold must remain load-bearing under Linear"
   printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home queued backlog row(s) superseded by the Linear queue: 3")' >/dev/null \
     || fail "all excluded secondmate-home queued rows must be disclosed beyond the snapshot display bound"
-  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home landed backlog row(s) superseded by the Linear queue: 1")' >/dev/null \
-    || fail "excluded secondmate-home landed rows must be disclosed"
+  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home landed backlog row(s) superseded by the Linear queue: 2")' >/dev/null \
+    || fail "all excluded secondmate-home landed rows must be disclosed beyond the per-home snapshot bound"
   printf '%s' "$out" | jq -e '.omitted[] | select(.surface | contains("QB-4"))' >/dev/null \
     || fail "a stale linked meta must not suppress an in-flight Linear disclosure"
   pass "bearings sources gates, decisions, and landed from Linear"
@@ -476,9 +507,9 @@ test_retry_command_quotes_completion_note() {
   rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh hold GAL-8 --reason "[route] captain's choice")
   assert_eq "$rendered" "bin/fm-backlog-linear.sh hold GAL-8 --reason '[route] captain'\\''s choice'" \
     "hold retry command preserves an apostrophe"
-  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve GAL-8 --decision-file \
+  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve GAL-8 --key route --decision-file \
     "/tmp/decision path;safe.md" --keep-held)
-  assert_eq "$rendered" "bin/fm-backlog-linear.sh resolve GAL-8 --decision-file '/tmp/decision path;safe.md' --keep-held" \
+  assert_eq "$rendered" "bin/fm-backlog-linear.sh resolve GAL-8 --key route --decision-file '/tmp/decision path;safe.md' --keep-held" \
     "resolve retry command preserves whitespace and shell metacharacters"
   pass "retry command is copy-paste runnable"
 }
@@ -524,6 +555,7 @@ test_done_requires_completion_artifact
 test_done_comment_is_idempotent
 test_hold_deduplicates_each_decision_comment
 test_resolve_comments_and_clears_label
+test_resolve_deduplicates_per_hold_key
 test_attach_pr_validates_url
 test_spawn_linear_validation
 test_bearings_linear_projection

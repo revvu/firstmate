@@ -327,7 +327,12 @@ if fm_linear_backend_selected "$CONFIG"; then
                     and ((.labels | index($captain)) | not)
                     and ((.identifier as $i | $linked | index($i)) | not))
        | .identifier ]') || exit 1
-  LINEAR_LOCAL_MATE_DONE=$(printf '%s' "$SNAP" | jq '(.secondmate_landed.records // []) | length') || exit 1
+  LINEAR_LOCAL_MATE_DONE=$(printf '%s' "$SNAP" | jq '
+    . as $snap
+    | ([ ($snap.secondmate_current.records // [])[]
+         | select(.provenance.selected == "structured-home")
+         | (.counts.landed // ((.landed // []) | length)) ]
+       | add) // (($snap.secondmate_landed.records // []) | length)') || exit 1
   LINEAR_LOCAL_MATE_QUEUED=$(printf '%s' "$SNAP" | jq '
     [ (.secondmate_current.records // [])[]
       | select(.provenance.selected == "structured-home")

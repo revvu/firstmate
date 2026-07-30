@@ -282,9 +282,9 @@ linear_mirror_resolve() {  # <origin-id> <decision-key> <decision-file>
   done <<EOF
 $(printf '%s\n' "$keys" | tr ',' '\n')
 EOF
-  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve "$issue" --decision-file "$3" \
+  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve "$issue" --key "$2" --decision-file "$3" \
     "${keep[@]+"${keep[@]}"}")
-  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" resolve "$issue" --decision-file "$3" \
+  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" resolve "$issue" --key "$2" --decision-file "$3" \
     "${keep[@]+"${keep[@]}"}" >/dev/null; then
     echo "fm-decision-hold: warning: could not mirror the recorded decision to Linear issue $issue; retry with: $retry_command" >&2
   fi
