@@ -123,6 +123,9 @@ case "$payload" in
   *'issueUpdate('*)
     body='{"data":{"issueUpdate":{"success":true}}}'
     ;;
+  *'issueCreate('*)
+    body='{"data":{"issueCreate":{"success":true,"issue":{"identifier":"GAL-42","url":"https://linear.app/x/issue/GAL-42"}}}}'
+    ;;
   *'commentCreate('*)
     body='{"data":{"commentCreate":{"success":true}}}'
     ;;
@@ -287,6 +290,21 @@ test_start_moves_to_lowest_started_state() {
   grep -F 'issueUpdate(' "$home/curl.log" | grep -F '"state":"state-progress"' >/dev/null \
     || fail "start must move to the lowest-position started state (In Progress, not In Review)"
   pass "start uses the team's canonical started state"
+}
+
+test_add_creates_issue_in_selected_team() {
+  local home fb out
+  home=$(make_home add)
+  fb=$(make_fake_curl "$home")
+  out=$(run_cli "$home" "$fb" add "Ship the durable queue" --team GAL --body "Company-visible work item") \
+    || fail "add failed"
+  assert_eq "$out" "GAL-42 https://linear.app/x/issue/GAL-42" "add reports the created issue"
+  grep -F 'issueCreate(' "$home/curl.log" \
+    | grep -F '"team":"team-1"' \
+    | grep -F '"title":"Ship the durable queue"' \
+    | grep -F '"desc":"Company-visible work item"' >/dev/null \
+    || fail "add must create the issue in the requested team with its title and body"
+  pass "add creates a company-visible Linear issue in the selected team"
 }
 
 test_done_attaches_pr_and_completes() {
@@ -550,6 +568,7 @@ test_queue_bucket_mapping
 test_queue_text_grouping
 test_queue_pagination
 test_start_moves_to_lowest_started_state
+test_add_creates_issue_in_selected_team
 test_done_attaches_pr_and_completes
 test_done_requires_completion_artifact
 test_done_comment_is_idempotent

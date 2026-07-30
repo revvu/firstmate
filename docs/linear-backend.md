@@ -12,7 +12,7 @@ With the config absent or set to `tasks-axi` or `manual`, nothing in this docume
 
 The key is read from the environment first, then from `$FM_HOME/.env` (override the file with `FM_LINEAR_ENV_FILE`).
 It is sent only as the request `Authorization` header and is never echoed, logged, or committed.
-When the key is absent or rejected, every Linear command - including the bearings snapshot under this backend - refuses with the concrete missing requirement instead of proceeding or rendering an empty queue.
+When the key is absent or rejected, every Linear command - including the bearings snapshot under this backend - refuses with a specific credential diagnostic instead of proceeding or rendering an empty queue.
 Session-start bootstrap surfaces a missing key as a `MISSING_MANUAL: LINEAR_API_KEY` diagnostic and also requires `curl` and `jq` while this backend is selected.
 
 `config/backlog-backend` is inherited into secondmate homes under the `secondmate-provisioning` contract, but `.env` is not: each secondmate home needs its own `LINEAR_API_KEY` in its own `.env` and refuses Linear operations clearly without it.

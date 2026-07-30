@@ -48,7 +48,7 @@ Never add an agent name as a commit co-author.
 
 `docs/configuration.md` is the single owner of the top-level operational-home layout and configuration schemas; each producing script's header and help own exact child fields and mutation mechanics.
 `FM_HOME` selects an instance's private `data/`, `state/`, `config/`, and `projects/`, while scripts continue to come from their tracked code root.
-Each secondmate has a persistent isolated `FM_HOME`, including its own state, backlog, projects, and session lock.
+Each secondmate has a persistent isolated `FM_HOME`, including its own state, local backlog, projects, and session lock; under Linear that local backlog retains decision mechanics while the work-item queue remains workspace-global.
 `bin/fm-send.sh` fails closed unless `FM_HOME` is explicit, so a steer cannot silently resolve against another home.
 
 Tracked files hold shared instructions and tooling; `data/` holds durable private fleet records; `state/` holds volatile runtime records and append-only status events; `config/` holds local operating choices; and `projects/` contains clones that are read-only to firstmate except under hard rule 1's concrete captain-approved project operation exception.
@@ -434,14 +434,14 @@ Mention cost as a courtesy when unusually much work is running, but never block 
 The configured backlog backend owns the durable queue: local `data/backlog.md` under the default `tasks-axi` and `manual` backends, or the Linear workspace when `config/backlog-backend` selects `linear`.
 `docs/linear-backend.md` is the single owner of the Linear backend's setup, queue definition, state mapping, lifecycle writes, and limits; read and write that queue only through `bin/fm-backlog-linear.sh` and the wired lifecycle scripts, and link a dispatch to its issue with `fm-spawn.sh --linear <ISSUE-ID>`.
 The queue tracks work items only, never agents; persistent secondmates never appear as backlog items.
-Work routed to a secondmate is recorded in that secondmate home's own backlog, not the main backlog.
-When a main-side thread such as a pending captain decision or relay reminder is worth durable tracking, file it as its own work item; use `tasks-axi hold <id> --reason "<reason>" --kind captain` for a captain-gated thread.
+Under the local backends, work routed to a secondmate is recorded in that secondmate home's own backlog, not the main backlog; under Linear, the workspace-global queue stays shared and home assignment remains a routing decision.
+When a main-side thread such as a pending captain decision or relay reminder is worth durable tracking, file it as its own work item in the configured queue.
 Unresolved decisions discovered by investigations or visual reviews follow `decision-hold-lifecycle`, which owns their mandatory backlog lifecycle; captain decision holds keep their local structured mechanics under every backend, with Linear-linked holds additionally mirrored per `docs/linear-backend.md`.
 Update the backlog on every dispatch, completion, and decision for a work item.
 Re-evaluate queued work after every teardown and heartbeat, dispatching items only when dependencies and time gates have cleared.
 
 `.tasks.toml`, `docs/configuration.md`, and current `tasks-axi --help` own the local backlog schema, compatibility, retention, and routine command syntax.
-Use compatible `tasks-axi` when the configured backend selects it and the documented manual path otherwise; keep only the configured recent Done entries.
+For local queues, use compatible `tasks-axi` when the configured backend selects it and the documented manual path otherwise; keep only the configured recent Done entries.
 `secondmate-provisioning` and `bin/fm-backlog-handoff.sh` own cross-home handoff safety.
 
 Keep free-form notes free of temporary paths, moving versions, ephemeral identifiers, and copied state that will rot.
