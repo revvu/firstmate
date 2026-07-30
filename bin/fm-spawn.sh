@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--scout]
+# Usage: fm-spawn.sh <task-id> <project-dir> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--linear <issue>] [--scout]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
+#   --linear <issue> records the originating Linear issue identifier (e.g.
+#   GAL-8) as linear= in task meta; when the Linear backlog backend is selected
+#   the spawn also moves that issue to started (docs/linear-backend.md). It is
+#   per-task by nature, so batch dispatch and --secondmate refuse it.
 #   --model <name> and --effort <low|medium|high|xhigh|max> are concrete profile
 #   axes chosen by firstmate at intake. They are only threaded into harnesses whose
 #   installed CLIs were verified to support that axis; unsupported axes are omitted
@@ -173,6 +177,8 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 # Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
 # a direct report (see bin/fm-gate-refuse-lib.sh).
 fm_refuse_if_gate_agent
@@ -184,10 +190,12 @@ HARNESS_ARG=
 MODEL=
 EFFORT=
 BACKEND_ARG=
+LINEAR_ID=
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
 BACKEND_SET=0
+LINEAR_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -200,6 +208,7 @@ for a in "$@"; do
       model) MODEL=$a; MODEL_SET=1 ;;
       effort) EFFORT=$a; EFFORT_SET=1 ;;
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
+      linear) LINEAR_ID=$a; LINEAR_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -216,6 +225,8 @@ for a in "$@"; do
     --effort=*) EFFORT=${a#--effort=}; EFFORT_SET=1 ;;
     --backend) want_value=backend ;;
     --backend=*) BACKEND_ARG=${a#--backend=}; BACKEND_SET=1 ;;
+    --linear) want_value=linear ;;
+    --linear=*) LINEAR_ID=${a#--linear=}; LINEAR_SET=1 ;;
     *) POS+=("$a") ;;
   esac
 done
@@ -228,6 +239,14 @@ case "$EFFORT" in
   ''|low|medium|high|xhigh|max) ;;
   *) echo "error: --effort must be one of low, medium, high, xhigh, max" >&2; exit 1 ;;
 esac
+# --linear records the originating Linear issue in task meta so the lifecycle
+# scripts can write dispatch/PR/completion back to it (docs/linear-backend.md).
+if [ "$LINEAR_SET" -eq 1 ]; then
+  fm_linear_identifier_valid "$LINEAR_ID" \
+    || { echo "error: --linear expects a Linear issue identifier like GAL-8" >&2; exit 1; }
+  [ "$KIND" != secondmate ] \
+    || { echo "error: --linear does not apply to secondmate launches" >&2; exit 1; }
+fi
 
 # Backend selection (data/fm-backend-design-d7): explicit --backend, else
 # FM_BACKEND env, else config/backend, else runtime auto-detection, else
@@ -382,6 +401,10 @@ idpart=${idpart%%=*}
 if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in */*) false ;; *) true ;; esac; then
   if [ "$KIND" != secondmate ] && [ -z "$HARNESS_ARG" ] && [ -f "$CONFIG/crew-dispatch.json" ]; then
     echo "error: config/crew-dispatch.json is active - pass an explicit harness resolved from the dispatch rules (the consultation backstop, so the rules are never silently skipped)." >&2
+    exit 1
+  fi
+  if [ "$LINEAR_SET" -eq 1 ]; then
+    echo "error: --linear links one task to one Linear issue and cannot be shared across a batch; spawn Linear-linked tasks individually" >&2
     exit 1
   fi
   rc=0
@@ -1499,6 +1522,9 @@ META_WINDOW=$T
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
+  # linear= is written only when the dispatch originates from a Linear issue,
+  # so unlinked tasks' meta stays byte-identical (docs/linear-backend.md).
+  [ -z "$LINEAR_ID" ] || echo "linear=$LINEAR_ID"
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).
@@ -1605,4 +1631,13 @@ if [ "$KIND" = secondmate ]; then
   fi
 fi
 
+# Linear-backend dispatch recording (docs/linear-backend.md): the launched task
+# moves its originating issue to started. Best-effort - the spawn already
+# succeeded, so a failed write warns with the exact retry command instead of
+# failing the task.
+if [ -n "$LINEAR_ID" ] && fm_linear_backend_selected "$CONFIG"; then
+  if ! "$FM_ROOT/bin/fm-backlog-linear.sh" start "$LINEAR_ID" >/dev/null; then
+    echo "warning: could not move Linear issue $LINEAR_ID to started; retry with: bin/fm-backlog-linear.sh start $LINEAR_ID" >&2
+  fi
+fi
 echo "spawned $ID harness=$HARNESS kind=$KIND mode=$MODE yolo=$YOLO window=$META_WINDOW worktree=$WT"
