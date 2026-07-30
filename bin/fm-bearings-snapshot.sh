@@ -39,11 +39,11 @@
 # load-bearing decision mechanics; a mirrored hold can appear under both its
 # local hold id and its Linear issue until resolved.
 #
-# The landed section merges this home's Done with the canonical snapshot's
-# secondmate_landed roll-up (fm-fleet-snapshot.sh), so merges a secondmate managed -
-# recorded in ITS OWN backlog, never the main one - are visible. It stays bounded by
-# a per-home cap and an overall cap, with omitted[] disclosure of both and of any
-# secondmate home whose backlog was unreadable; no GitHub/network call is involved.
+# Outside the Linear backend, the landed section merges this home's Done with the
+# canonical snapshot's secondmate_landed roll-up (fm-fleet-snapshot.sh), so merges a
+# secondmate managed - recorded in ITS OWN backlog, never the main one - are visible.
+# Under Linear, those local landed and queued rows are excluded with omitted[]
+# disclosure because the workspace-global Linear queue owns both inventories.
 # The default landed baseline is balanced across homes: each home keeps its internal
 # newest-first ordering, homes iterate in deterministic id order, sparse homes do not
 # waste capacity, and --all-landed switches back to the complete global newest-first
@@ -300,13 +300,18 @@ LINEAR_GATES='[]'
 LINEAR_DECISIONS='[]'
 LINEAR_DONE='[]'
 LINEAR_ELSEWHERE='[]'
+LINEAR_LOCAL_MATE_DONE=0
+LINEAR_LOCAL_MATE_QUEUED=0
 if fm_linear_backend_selected "$CONFIG"; then
   fm_linear_require || exit 1
   LINEAR_QUEUE=$(fm_linear_queue_json) \
     || { echo "fm-bearings-snapshot: could not read the Linear queue" >&2; exit 1; }
-  # Identifiers already linked to a local task (linear= in live meta): their
-  # in-flight state is represented by the local runtime row.
-  LINKED=$(grep -h '^linear=' "$STATE"/*.meta 2>/dev/null | cut -d= -f2- | jq -Rn '[inputs] | unique')
+  LINKED=$(printf '%s' "$SNAP" | jq -c \
+    '[ .tasks[]
+       | select(.endpoint.exists == true and .endpoint.agent_alive != "dead")
+       | .linear
+       | select(. != null and . != "") ]
+     | unique') || exit 1
   LINEAR_GATES=$(printf '%s' "$LINEAR_QUEUE" | jq -c --arg captain "$FM_LINEAR_CAPTAIN_LABEL" \
     '[ .[] | select(.bucket == "queued" and ((.labels | index($captain)) | not))
        | {id: .identifier, title, blocked_by: "-", reason: .state_name, owner: "linear"} ]') || exit 1
@@ -322,6 +327,13 @@ if fm_linear_backend_selected "$CONFIG"; then
                     and ((.labels | index($captain)) | not)
                     and ((.identifier as $i | $linked | index($i)) | not))
        | .identifier ]') || exit 1
+  LINEAR_LOCAL_MATE_DONE=$(printf '%s' "$SNAP" | jq '(.secondmate_landed.records // []) | length') || exit 1
+  LINEAR_LOCAL_MATE_QUEUED=$(printf '%s' "$SNAP" | jq '
+    [ (.secondmate_current.records // [])[]
+      | select(.provenance.selected == "structured-home")
+      | .queued[]?
+      | select(.captain_actionable != true) ]
+    | length') || exit 1
   USE_LINEAR=1
 fi
 
@@ -358,7 +370,9 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   --argjson linear_gates "$LINEAR_GATES" \
   --argjson linear_decisions "$LINEAR_DECISIONS" \
   --argjson linear_done "$LINEAR_DONE" \
-  --argjson linear_elsewhere "$LINEAR_ELSEWHERE" '
+  --argjson linear_elsewhere "$LINEAR_ELSEWHERE" \
+  --argjson linear_local_mate_done "$LINEAR_LOCAL_MATE_DONE" \
+  --argjson linear_local_mate_queued "$LINEAR_LOCAL_MATE_QUEUED" '
   def trunc($n): if . == null then null else
     (tostring | gsub("\\s+"; " ") | if (length > $n) then (.[:$n] + "…") else . end) end;
   def round_robin_landed($n):
@@ -376,7 +390,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
      else [ .backlog.records[] | select(.state == "done" and .structured and .kind != "captain")
             | {id, title, pr_url, report_path, local_note, completion, home:"(main)", home_id:"(main)"} ]
      end) as $main_done
-  | ((.secondmate_landed.records) // []) as $mate_done
+  | (if $use_linear == 1 then [] else ((.secondmate_landed.records) // []) end) as $mate_done
   | ($main_done + $mate_done) as $all_landed_rows
   | ([ $all_landed_rows | group_by(.home_id)[]
        | sort_by([(.completion.date // ""), .id]) | reverse
@@ -471,13 +485,15 @@ MODEL=$(printf '%s' "$SNAP" | jq \
      + (if $use_linear == 1
         then [ $linear_gates[] | .title |= trunc(60) | .reason |= trunc(40) ]
         else $main_gates_local end)
-     + [ (.secondmate_current.records // [])[] as $m
-         | select($m.provenance.selected == "structured-home")
-         | $m.queued[]?
-         | select(.captain_actionable != true)
-         | {id,title:(.title | trunc(60)),
-            blocked_by:((.unresolved_blocker_ids // []) | if length > 0 then join(",") else "-" end | trunc(120)),
-            reason:((.hold_reason // .blocked_reason // "-") | trunc(40)),owner:$m.id} ]) as $gates_all
+     + (if $use_linear == 1 then []
+        else [ (.secondmate_current.records // [])[] as $m
+               | select($m.provenance.selected == "structured-home")
+               | $m.queued[]?
+               | select(.captain_actionable != true)
+               | {id,title:(.title | trunc(60)),
+                  blocked_by:((.unresolved_blocker_ids // []) | if length > 0 then join(",") else "-" end | trunc(120)),
+                  reason:((.hold_reason // .blocked_reason // "-") | trunc(40)),owner:$m.id} ]
+        end)) as $gates_all
   | ([ .scout_reports[]
        | . as $r
        | select(($all_reports == 1) or (($rel_ids | index($r.id)) != null))
@@ -519,6 +535,8 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         (if (($snap.secondmate_landed.unreadable // []) | length) > 0 then {surface:("secondmate home(s) with unreadable backlog: \(($snap.secondmate_landed.unreadable // []) | length)"), reveal:"inspect the listed secondmate home backlogs"} else empty end),
         (if $all_landed == 0 and (($snap.secondmate_landed.truncated // []) | length) > 0 then {surface:("secondmate home Done capped at the snapshot layer for \(($snap.secondmate_landed.truncated // []) | length) home(s)"), reveal:"--all-landed"} else empty end),
         (if $use_linear == 1 and ($main_gates_local | length) > 0 then {surface:("local queued backlog row(s) superseded by the Linear queue: \($main_gates_local | length)"), reveal:"inspect main data/backlog.md Queued"} else empty end),
+        (if $use_linear == 1 and $linear_local_mate_queued > 0 then {surface:("secondmate-home queued backlog row(s) superseded by the Linear queue: \($linear_local_mate_queued)"), reveal:"inspect registered secondmate home backlogs"} else empty end),
+        (if $use_linear == 1 and $linear_local_mate_done > 0 then {surface:("secondmate-home landed backlog row(s) superseded by the Linear queue: \($linear_local_mate_done)"), reveal:"inspect registered secondmate home backlogs"} else empty end),
         (if $use_linear == 1 and ($linear_elsewhere | length) > 0 then {surface:("Linear issue(s) in progress with no local worker: \($linear_elsewhere | join(", "))"), reveal:"bin/fm-backlog-linear.sh list"} else empty end),
         ((($snap.main_inventory.orphan_in_flight // []) | length) as $n
          | if $n > 0 then {surface:("main in-flight backlog item(s) have no child metadata: \($n)"), reveal:"inspect main data/backlog.md In flight vs state/*.meta"} else empty end),

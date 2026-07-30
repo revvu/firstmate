@@ -74,15 +74,21 @@ fm_linear_require() {
 # and returns non-zero on transport failure, HTTP error, rejected key, or a
 # GraphQL errors[] payload.
 fm_linear_gql() {
-  local query=$1 vars=${2:-null} key payload response status body message
+  local query=$1 vars=${2:-null} key payload response status body message header_file
   fm_linear_require || return 1
   key=$(fm_linear_api_key)
   payload=$(jq -cn --arg q "$query" --argjson v "$vars" '{query:$q, variables:$v}') \
     || { echo "fm-linear: could not encode the request" >&2; return 1; }
-  response=$(printf '%s' "$payload" | curl -sS --max-time "${FM_LINEAR_TIMEOUT:-30}" \
-    -X POST "${FM_LINEAR_URL:-https://api.linear.app/graphql}" \
-    -H "Authorization: $key" -H "Content-Type: application/json" \
-    --data-binary @- -w '\n%{http_code}' 2>/dev/null) \
+  response=$(
+    header_file=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-linear-header.XXXXXX") \
+      || exit 1
+    trap 'rm -f "$header_file"' EXIT HUP INT TERM
+    printf 'Authorization: %s\n' "$key" > "$header_file" || exit 1
+    printf '%s' "$payload" | curl -sS --max-time "${FM_LINEAR_TIMEOUT:-30}" \
+      -X POST "${FM_LINEAR_URL:-https://api.linear.app/graphql}" \
+      -H "@$header_file" -H "Content-Type: application/json" \
+      --data-binary @- -w '\n%{http_code}' 2>/dev/null
+  ) \
     || { echo "fm-linear: request to Linear failed (network or curl error)" >&2; return 1; }
   status=${response##*$'\n'}
   body=${response%$'\n'*}
@@ -97,6 +103,23 @@ fm_linear_gql() {
     return 1
   fi
   printf '%s\n' "$body"
+}
+
+fm_linear_command_string() {
+  local arg separator=
+  for arg in "$@"; do
+    printf '%s' "$separator"
+    case "$arg" in
+      '') printf "''" ;;
+      *[!A-Za-z0-9_@%+=:,./-]*)
+        printf "'"
+        printf '%s' "$arg" | sed "s/'/'\\\\''/g"
+        printf "'"
+        ;;
+      *) printf '%s' "$arg" ;;
+    esac
+    separator=' '
+  done
 }
 
 fm_linear_identifier_valid() {  # <issue-identifier like GAL-8>
@@ -163,6 +186,29 @@ fm_linear_issue_json() {
     "$(jq -cn --arg id "$1" '{id:$id}')") || return 1
   printf '%s' "$body" | jq -ce '.data.issue' \
     || { echo "fm-linear: issue $1 was not found" >&2; return 1; }
+}
+
+fm_linear_issue_comments_json() {
+  local query cursor=null body page comments='[]' has_next
+  query='query($id: String!, $first: Int, $after: String) {
+    issue(id: $id) {
+      comments(first: $first, after: $after) {
+        nodes { body }
+        pageInfo { hasNextPage endCursor } } } }'
+  while :; do
+    body=$(fm_linear_gql "$query" \
+      "$(jq -cn --arg id "$1" --argjson after "$cursor" \
+        '{id:$id, first:100, after:$after}')") || return 1
+    page=$(printf '%s' "$body" | jq -ce '[.data.issue.comments.nodes[].body]') \
+      || { echo "fm-linear: could not read comments for issue $1" >&2; return 1; }
+    comments=$(jq -cn --argjson a "$comments" --argjson b "$page" '$a + $b')
+    has_next=$(printf '%s' "$body" | jq -r '.data.issue.comments.pageInfo.hasNextPage')
+    [ "$has_next" = true ] || break
+    cursor=$(printf '%s' "$body" | jq -c '.data.issue.comments.pageInfo.endCursor')
+    [ "$cursor" != null ] \
+      || { echo "fm-linear: comment pagination returned no cursor for issue $1" >&2; return 1; }
+  done
+  printf '%s\n' "$comments"
 }
 
 # fm_linear_team_state_id <team-uuid> <state-type> - the team's canonical state

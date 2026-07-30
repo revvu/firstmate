@@ -25,8 +25,8 @@
 # done    - attach the completion artifact (--pr as a link attachment, --report
 #           or --note as one terse comment), then move to completed.
 # hold    - mirror a captain decision: add the captain-call label plus one
-#           comment stating the decision needed (idempotent; a second hold on
-#           an already-labeled issue posts nothing).
+#           comment stating the decision needed (idempotent per exact decision
+#           marker while distinct decisions on one issue each get a comment).
 # resolve - post the recorded decision when --decision-file is given, then
 #           remove the captain-call label; --keep-held posts the decision but
 #           leaves the label because other decisions on the issue remain open.
@@ -158,6 +158,8 @@ command_done() {
     esac
     shift
   done
+  [ -n "$pr" ] || [ -n "$report" ] || [ -n "$note" ] \
+    || fail "done requires a completion artifact: --pr, --report, or --note"
   issue=$(fm_linear_issue_json "$id") || exit 1
   uuid=$(printf '%s' "$issue" | jq -r '.id')
   if [ -n "$pr" ]; then
@@ -173,7 +175,7 @@ command_done() {
 }
 
 command_hold() {
-  local id=${1:-} reason='' issue uuid label_id
+  local id=${1:-} reason='' issue uuid label_id comment comments
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   require_identifier "$id"
   shift
@@ -187,14 +189,18 @@ command_hold() {
   [ -n "$reason" ] || fail "--reason <text> is required"
   issue=$(fm_linear_issue_json "$id") || exit 1
   uuid=$(printf '%s' "$issue" | jq -r '.id')
-  if printf '%s' "$issue" | jq -e --arg l "$FM_LINEAR_CAPTAIN_LABEL" \
+  if ! printf '%s' "$issue" | jq -e --arg l "$FM_LINEAR_CAPTAIN_LABEL" \
     '.labels.nodes | any(.name == $l)' >/dev/null; then
+    label_id=$(fm_linear_label_id "$FM_LINEAR_CAPTAIN_LABEL" "$(printf '%s' "$issue" | jq -r '.team.id')") || exit 1
+    fm_linear_label_add "$uuid" "$label_id"
+  fi
+  comment="Captain decision needed: $reason"
+  comments=$(fm_linear_issue_comments_json "$id") || exit 1
+  if printf '%s' "$comments" | jq -e --arg comment "$comment" 'index($comment) != null' >/dev/null; then
     printf 'already held: %s\n' "$id"
     return 0
   fi
-  label_id=$(fm_linear_label_id "$FM_LINEAR_CAPTAIN_LABEL" "$(printf '%s' "$issue" | jq -r '.team.id')") || exit 1
-  fm_linear_label_add "$uuid" "$label_id"
-  fm_linear_comment "$uuid" "Captain decision needed: $reason"
+  fm_linear_comment "$uuid" "$comment"
   printf 'held: %s\n' "$id"
 }
 

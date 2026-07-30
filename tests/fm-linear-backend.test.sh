@@ -34,6 +34,20 @@ make_fake_curl() {  # <dir>
 set -u
 payload=$(cat)
 printf '%s\n' "$payload" >> "$FM_FAKE_CURL_LOG"
+printf '%s\n' "$*" >> "$(dirname "$FM_FAKE_CURL_LOG")/curl-args.log"
+for arg in "$@"; do
+  case "$arg" in
+    *lin_api_test_fixture*) exit 90 ;;
+    @*)
+      header_file=${arg#@}
+      if grep -Fx 'Authorization: lin_api_test_fixture' "$header_file" >/dev/null 2>&1; then
+        mode=$(stat -f %Lp "$header_file" 2>/dev/null || stat -c %a "$header_file")
+        [ "$mode" = 600 ] || exit 91
+        printf 'auth-file-ok\n' >> "$(dirname "$FM_FAKE_CURL_LOG")/curl-auth.log"
+      fi
+      ;;
+  esac
+done
 if [ "${FM_FAKE_CURL_STATUS:-200}" != 200 ]; then
   printf '%s\n%s' "${FM_FAKE_CURL_BODY:-{}}" "${FM_FAKE_CURL_STATUS}"
   exit 0
@@ -43,6 +57,10 @@ if [ "${FM_FAKE_CURL_FORCE_ERRORS:-0}" = 1 ]; then
   exit 0
 fi
 case "$payload" in
+  *'comments(first:'*)
+    comments=${FM_FAKE_COMMENTS_JSON:-[]}
+    body='{"data":{"issue":{"comments":{"nodes":'"$(printf '%s' "$comments" | jq -c 'map({body:.})')"',"pageInfo":{"hasNextPage":false,"endCursor":"COMMENTS-END"}}}}}'
+    ;;
   *'viewer { id name email }'*)
     body='{"data":{"viewer":{"id":"u1","name":"reevu adakroy","email":"reevu.adakroy@gallopify.com"}}}'
     ;;
@@ -202,6 +220,18 @@ test_graphql_error_refusal() {
   pass "GraphQL errors payload refuses"
 }
 
+test_transport_hides_key_from_argv() {
+  local home fb
+  home=$(make_home hidden-key)
+  fb=$(make_fake_curl "$home")
+  run_cli "$home" "$fb" viewer >/dev/null || fail "viewer request failed"
+  grep -F 'lin_api_test_fixture' "$home/curl-args.log" >/dev/null \
+    && fail "the Linear API key must not appear in curl argv"
+  grep -Fx 'auth-file-ok' "$home/curl-auth.log" >/dev/null \
+    || fail "the Authorization header must come from a private mode-0600 file"
+  pass "transport keeps the Linear API key out of process argv"
+}
+
 # --- queue normalization ------------------------------------------------------
 
 test_queue_bucket_mapping() {
@@ -271,7 +301,18 @@ test_done_attaches_pr_and_completes() {
   pass "done attaches the PR and completes the issue"
 }
 
-test_hold_labels_and_comments_once() {
+test_done_requires_completion_artifact() {
+  local home fb out rc=0
+  home=$(make_home done-artifact)
+  fb=$(make_fake_curl "$home")
+  out=$(run_cli "$home" "$fb" "done" GAL-8 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "done without an artifact must refuse"
+  assert_contains "$out" "requires a completion artifact" "done names its artifact requirement"
+  [ ! -s "$home/curl.log" ] || fail "done without an artifact must refuse before calling Linear"
+  pass "done refuses completion without an artifact"
+}
+
+test_hold_deduplicates_each_decision_comment() {
   local home fb out
   home=$(make_home hold)
   fb=$(make_fake_curl "$home")
@@ -281,11 +322,24 @@ test_hold_labels_and_comments_once() {
   grep -F 'commentCreate(' "$home/curl.log" | grep -F 'Captain decision needed: pick a rollout window' >/dev/null \
     || fail "hold must post the decision-needed comment"
   : > "$home/curl.log"
-  out=$(env FM_FAKE_ISSUE_LABELED=1 FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+  out=$(env FM_FAKE_ISSUE_LABELED=1 \
+    FM_FAKE_COMMENTS_JSON='["Captain decision needed: pick a rollout window"]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
     PATH="$fb:$PATH" "$CLI" hold GAL-8 --reason "pick a rollout window") || fail "repeat hold failed"
   assert_contains "$out" "already held: GAL-8" "repeat hold reports already held"
   grep -F 'commentCreate(' "$home/curl.log" >/dev/null && fail "a repeat hold must not post another comment"
-  pass "hold is idempotent and never spams comments"
+  : > "$home/curl.log"
+  out=$(env FM_FAKE_ISSUE_LABELED=1 \
+    FM_FAKE_COMMENTS_JSON='["Captain decision needed: pick a rollout window"]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$CLI" hold GAL-8 --reason "[release-key] choose the release train") \
+    || fail "distinct hold failed"
+  assert_contains "$out" "held: GAL-8" "distinct hold reports the issue"
+  grep -F 'issueAddLabel(' "$home/curl.log" >/dev/null \
+    && fail "a labeled issue must not add the shared label again"
+  grep -F 'commentCreate(' "$home/curl.log" | grep -F '[release-key] choose the release train' >/dev/null \
+    || fail "a distinct decision key must get its own comment"
+  pass "hold idempotency is scoped to each exact decision comment"
 }
 
 test_resolve_comments_and_clears_label() {
@@ -338,12 +392,27 @@ test_spawn_linear_validation() {
 # --- bearings projection under the linear backend ------------------------------
 
 test_bearings_linear_projection() {
-  local home fb out
+  local home fb out mate
   home=$(make_home bearings)
   fb=$(make_fake_curl "$home")
-  # QB-4 is in flight in Linear with no local worker; a linked meta suppresses
-  # the disclosure for its own issue only.
+  mate="${home}-mate-home"
+  mkdir -p "$mate/state" "$mate/data" "$mate/config" "$mate/projects" "$mate/bin"
+  printf '# Firstmate fixture\n' > "$mate/AGENTS.md"
+  printf 'mate\n' > "$mate/.fm-secondmate-home"
+  printf -- '- mate - fixture domain (home: %s; scope: fixture work; projects: firstmate; added 2026-07-30)\n' \
+    "$mate" > "$home/data/secondmates.md"
+  cat > "$mate/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] mate-queued - Local queue row (repo: firstmate) (kind: ship)
+- [ ] mate-decision - Choose a route (repo: firstmate) (kind: captain) (hold: captain choice pending) (hold-kind: captain)
+
+## Done
+- [x] mate-landed - Local landed row https://github.com/acme/repo/pull/40 (repo: firstmate) (kind: ship) (merged 2026-07-30)
+EOF
   printf 'window=fm-local-task\nendpoint_task_id=local-task\nlinear=QB-9\n' > "$home/state/local-task.meta"
+  printf 'linear=QB-4\n' > "$home/state/stale-task.meta"
   out=$(env FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" PATH="$fb:$PATH" "$BEARINGS" --json) \
     || fail "bearings under the linear backend failed"
   assert_eq "$(printf '%s' "$out" | jq -r '.backlog_backend')" linear "model carries the backend marker"
@@ -352,9 +421,29 @@ test_bearings_linear_projection() {
     || fail "a captain-call issue must not appear as an ordinary gate"
   assert_eq "$(printf '%s' "$out" | jq -r '.decisions_open[] | select(.id == "QB-9") | .verb')" captain-hold "captain-call issue appears as an open decision"
   assert_eq "$(printf '%s' "$out" | jq -r '.landed[] | select(.id == "QB-5") | .artifact')" "https://linear.app/x/issue/QB-5" "completed Linear issue appears as landed with its URL"
+  printf '%s' "$out" | jq -e '.gates | map(.id) | index("mate-queued") | not' >/dev/null \
+    || fail "a secondmate-home queued row must not appear beside the Linear queue"
+  printf '%s' "$out" | jq -e '.landed | map(.id) | index("mate-landed") | not' >/dev/null \
+    || fail "a secondmate-home landed row must not appear beside Linear completions"
+  printf '%s' "$out" | jq -e '.decisions_open | map(.id) | index("mate/mate-decision") != null' >/dev/null \
+    || fail "a local secondmate captain hold must remain load-bearing under Linear"
+  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home queued backlog row(s) superseded by the Linear queue: 1")' >/dev/null \
+    || fail "excluded secondmate-home queued rows must be disclosed"
+  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home landed backlog row(s) superseded by the Linear queue: 1")' >/dev/null \
+    || fail "excluded secondmate-home landed rows must be disclosed"
   printf '%s' "$out" | jq -e '.omitted[] | select(.surface | contains("QB-4"))' >/dev/null \
-    || fail "an in-flight Linear issue with no local worker must be disclosed"
+    || fail "a stale linked meta must not suppress an in-flight Linear disclosure"
   pass "bearings sources gates, decisions, and landed from Linear"
+}
+
+test_retry_command_quotes_completion_note() {
+  local rendered
+  # shellcheck source=bin/fm-linear-lib.sh disable=SC1091
+  . "$ROOT/bin/fm-linear-lib.sh"
+  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh done GAL-8 --note "landed on local main")
+  assert_eq "$rendered" "bin/fm-backlog-linear.sh done GAL-8 --note 'landed on local main'" \
+    "retry command preserves a spaced completion note"
+  pass "retry command is copy-paste runnable"
 }
 
 test_bearings_refuses_without_key() {
@@ -383,17 +472,20 @@ test_identifier_validation
 test_missing_key_refusal
 test_rejected_key_refusal
 test_graphql_error_refusal
+test_transport_hides_key_from_argv
 test_queue_bucket_mapping
 test_queue_text_grouping
 test_queue_pagination
 test_start_moves_to_lowest_started_state
 test_done_attaches_pr_and_completes
-test_hold_labels_and_comments_once
+test_done_requires_completion_artifact
+test_hold_deduplicates_each_decision_comment
 test_resolve_comments_and_clears_label
 test_attach_pr_validates_url
 test_spawn_linear_validation
 test_bearings_linear_projection
 test_bearings_refuses_without_key
 test_bearings_default_backend_untouched
+test_retry_command_quotes_completion_note
 
 echo "all fm-linear-backend tests passed"

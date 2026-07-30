@@ -461,7 +461,7 @@ backlog_refresh_reminder() {
 # failed write never blocks cleanup and instead prints the exact retry command.
 # A forced teardown skips the write because forced discard is not completion.
 linear_backlog_refresh() {
-  local done_args=()
+  local done_args=() retry_command
   if [ -z "$LINEAR_ID" ]; then
     printf '%s\n' "Backlog: $ID just finished. The durable queue is Linear: if this work maps to an issue, run bin/fm-backlog-linear.sh done <ISSUE> with its artifact, then re-scan bin/fm-backlog-linear.sh list and dispatch only work whose blockers are gone."
     return 0
@@ -474,18 +474,19 @@ linear_backlog_refresh() {
       elif [ -n "$PR_URL" ]; then
         done_args=("$LINEAR_ID" --pr "$PR_URL")
       else
-        done_args=("$LINEAR_ID")
+        done_args=("$LINEAR_ID" --note "landed by task $ID")
       fi
       ;;
   esac
+  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh done "${done_args[@]}")
   if [ "$FORCE" = "--force" ]; then
-    printf '%s\n' "Backlog: $ID was force-removed; Linear issue $LINEAR_ID was left untouched. Record the real outcome yourself (completed: bin/fm-backlog-linear.sh done ${done_args[*]})."
+    printf '%s\n' "Backlog: $ID was force-removed; Linear issue $LINEAR_ID was left untouched. Record the real outcome yourself (completed: $retry_command)."
     return 0
   fi
   if "$FM_ROOT/bin/fm-backlog-linear.sh" "done" "${done_args[@]}" >/dev/null; then
     printf '%s\n' "Backlog: Linear issue $LINEAR_ID recorded as completed. Re-scan bin/fm-backlog-linear.sh list and dispatch only work whose blockers are gone."
   else
-    printf '%s\n' "Backlog: $ID just finished but Linear issue $LINEAR_ID could not be updated. Retry with: bin/fm-backlog-linear.sh done ${done_args[*]}"
+    printf '%s\n' "Backlog: $ID just finished but Linear issue $LINEAR_ID could not be updated. Retry with: $retry_command"
   fi
 }
 
