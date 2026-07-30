@@ -478,7 +478,7 @@ linear_backlog_refresh() {
       fi
       ;;
   esac
-  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh done "${done_args[@]}")
+  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh "done" "${done_args[@]}")
   if [ "$FORCE" = "--force" ]; then
     printf '%s\n' "Backlog: $ID was force-removed; Linear issue $LINEAR_ID was left untouched. Record the real outcome yourself (completed: $retry_command)."
     return 0

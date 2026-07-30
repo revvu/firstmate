@@ -519,7 +519,7 @@ test_retry_command_quotes_completion_note() {
   local rendered
   # shellcheck source=bin/fm-linear-lib.sh disable=SC1091
   . "$ROOT/bin/fm-linear-lib.sh"
-  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh done GAL-8 --note "landed on local main")
+  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh "done" GAL-8 --note "landed on local main")
   assert_eq "$rendered" "bin/fm-backlog-linear.sh done GAL-8 --note 'landed on local main'" \
     "retry command preserves a spaced completion note"
   rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh hold GAL-8 --reason "[route] captain's choice")
