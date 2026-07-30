@@ -17,6 +17,7 @@ command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
 
 CLI="$ROOT/bin/fm-backlog-linear.sh"
 BEARINGS="$ROOT/bin/fm-bearings-snapshot.sh"
+FLEET="$ROOT/bin/fm-fleet-snapshot.sh"
 TMP_ROOT=$(fm_test_tmproot fm-linear)
 
 assert_eq() {  # <actual> <expected> <msg>
@@ -312,6 +313,28 @@ test_done_requires_completion_artifact() {
   pass "done refuses completion without an artifact"
 }
 
+test_done_comment_is_idempotent() {
+  local home fb out
+  home=$(make_home done-comment)
+  fb=$(make_fake_curl "$home")
+  out=$(run_cli "$home" "$fb" "done" GAL-8 --note "landed by task sample") \
+    || fail "done with note failed"
+  assert_contains "$out" "completed: GAL-8" "done with note reports completion"
+  grep -F 'commentCreate(' "$home/curl.log" | grep -F 'Completed - landed by task sample' >/dev/null \
+    || fail "done --note must post its completion comment"
+  : > "$home/curl.log"
+  out=$(env FM_FAKE_COMMENTS_JSON='["Completed - landed by task sample"]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$CLI" "done" GAL-8 --note "landed by task sample") \
+    || fail "retried done with note failed"
+  assert_contains "$out" "completed: GAL-8" "retried done reports completion"
+  grep -F 'commentCreate(' "$home/curl.log" >/dev/null \
+    && fail "retried done must not duplicate its completion comment"
+  grep -F 'issueUpdate(' "$home/curl.log" >/dev/null \
+    || fail "retried done must still complete the state transition"
+  pass "done deduplicates its completion comment across retries"
+}
+
 test_hold_deduplicates_each_decision_comment() {
   local home fb out
   home=$(make_home hold)
@@ -354,11 +377,15 @@ test_resolve_comments_and_clears_label() {
     || fail "resolve must post the recorded decision"
   grep -F 'issueRemoveLabel(' "$home/curl.log" >/dev/null || fail "resolve must clear the captain-call label"
   : > "$home/curl.log"
-  out=$(env FM_FAKE_ISSUE_LABELED=1 FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+  out=$(env FM_FAKE_ISSUE_LABELED=1 \
+    FM_FAKE_COMMENTS_JSON='["Captain decision:\n\nShip the staged rollout."]' \
+    FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
     PATH="$fb:$PATH" "$CLI" resolve GAL-8 --decision-file "$home/decision.md" --keep-held) || fail "keep-held resolve failed"
   assert_contains "$out" "still held" "keep-held resolve says the hold remains"
+  grep -F 'commentCreate(' "$home/curl.log" >/dev/null \
+    && fail "a retried resolve must not duplicate its decision comment"
   grep -F 'issueRemoveLabel(' "$home/curl.log" >/dev/null && fail "--keep-held must not clear the label"
-  pass "resolve posts the decision and manages the label"
+  pass "resolve deduplicates the decision comment and manages the label"
 }
 
 test_attach_pr_validates_url() {
@@ -406,6 +433,7 @@ test_bearings_linear_projection() {
 
 ## Queued
 - [ ] mate-queued - Local queue row (repo: firstmate) (kind: ship)
+- [ ] mate-queued-two - Second local queue row (repo: firstmate) (kind: ship)
 - [ ] mate-decision - Choose a route (repo: firstmate) (kind: captain) (hold: captain choice pending) (hold-kind: captain)
 
 ## Done
@@ -413,7 +441,8 @@ test_bearings_linear_projection() {
 EOF
   printf 'window=fm-local-task\nendpoint_task_id=local-task\nlinear=QB-9\n' > "$home/state/local-task.meta"
   printf 'linear=QB-4\n' > "$home/state/stale-task.meta"
-  out=$(env FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" PATH="$fb:$PATH" "$BEARINGS" --json) \
+  out=$(env FM_SNAPSHOT_SECONDMATE_QUEUED=1 FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
+    PATH="$fb:$PATH" "$BEARINGS" --json) \
     || fail "bearings under the linear backend failed"
   assert_eq "$(printf '%s' "$out" | jq -r '.backlog_backend')" linear "model carries the backend marker"
   assert_eq "$(printf '%s' "$out" | jq -r '.gates[] | select(.id == "QB-1") | .owner')" linear "queued Linear issue appears as a gate owned by linear"
@@ -421,14 +450,15 @@ EOF
     || fail "a captain-call issue must not appear as an ordinary gate"
   assert_eq "$(printf '%s' "$out" | jq -r '.decisions_open[] | select(.id == "QB-9") | .verb')" captain-hold "captain-call issue appears as an open decision"
   assert_eq "$(printf '%s' "$out" | jq -r '.landed[] | select(.id == "QB-5") | .artifact')" "https://linear.app/x/issue/QB-5" "completed Linear issue appears as landed with its URL"
+  assert_eq "$(printf '%s' "$out" | jq -r '.landed[] | select(.id == "QB-5") | .owner')" linear "completed Linear issue is owned by linear"
   printf '%s' "$out" | jq -e '.gates | map(.id) | index("mate-queued") | not' >/dev/null \
     || fail "a secondmate-home queued row must not appear beside the Linear queue"
   printf '%s' "$out" | jq -e '.landed | map(.id) | index("mate-landed") | not' >/dev/null \
     || fail "a secondmate-home landed row must not appear beside Linear completions"
   printf '%s' "$out" | jq -e '.decisions_open | map(.id) | index("mate/mate-decision") != null' >/dev/null \
     || fail "a local secondmate captain hold must remain load-bearing under Linear"
-  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home queued backlog row(s) superseded by the Linear queue: 1")' >/dev/null \
-    || fail "excluded secondmate-home queued rows must be disclosed"
+  printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home queued backlog row(s) superseded by the Linear queue: 3")' >/dev/null \
+    || fail "all excluded secondmate-home queued rows must be disclosed beyond the snapshot display bound"
   printf '%s' "$out" | jq -e '.omitted[] | select(.surface == "secondmate-home landed backlog row(s) superseded by the Linear queue: 1")' >/dev/null \
     || fail "excluded secondmate-home landed rows must be disclosed"
   printf '%s' "$out" | jq -e '.omitted[] | select(.surface | contains("QB-4"))' >/dev/null \
@@ -443,6 +473,13 @@ test_retry_command_quotes_completion_note() {
   rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh done GAL-8 --note "landed on local main")
   assert_eq "$rendered" "bin/fm-backlog-linear.sh done GAL-8 --note 'landed on local main'" \
     "retry command preserves a spaced completion note"
+  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh hold GAL-8 --reason "[route] captain's choice")
+  assert_eq "$rendered" "bin/fm-backlog-linear.sh hold GAL-8 --reason '[route] captain'\\''s choice'" \
+    "hold retry command preserves an apostrophe"
+  rendered=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve GAL-8 --decision-file \
+    "/tmp/decision path;safe.md" --keep-held)
+  assert_eq "$rendered" "bin/fm-backlog-linear.sh resolve GAL-8 --decision-file '/tmp/decision path;safe.md' --keep-held" \
+    "resolve retry command preserves whitespace and shell metacharacters"
   pass "retry command is copy-paste runnable"
 }
 
@@ -457,14 +494,19 @@ test_bearings_refuses_without_key() {
 }
 
 test_bearings_default_backend_untouched() {
-  local home out
+  local home out fleet
   home=$(make_home default-backend)
   rm -f "$home/config/backlog-backend"
+  printf 'window=fm-default-task\nendpoint_task_id=default-task\n' > "$home/state/default-task.meta"
+  fleet=$(env -u LINEAR_API_KEY FM_HOME="$home" "$FLEET" --json) \
+    || fail "fleet snapshot on the default backend failed"
+  printf '%s' "$fleet" | jq -e '.tasks[] | select(.id == "default-task") | has("linear") | not' >/dev/null \
+    || fail "a default-backend task record must not gain a linear field"
   out=$(env -u LINEAR_API_KEY FM_HOME="$home" "$BEARINGS" --json) \
     || fail "bearings on the default backend failed"
   printf '%s' "$out" | jq -e 'has("backlog_backend") | not' >/dev/null \
     || fail "the default backend must not carry the linear marker"
-  pass "default backend output carries no linear surface"
+  pass "default backend snapshots carry no Linear schema surface"
 }
 
 test_backend_selection
@@ -479,6 +521,7 @@ test_queue_pagination
 test_start_moves_to_lowest_started_state
 test_done_attaches_pr_and_completes
 test_done_requires_completion_artifact
+test_done_comment_is_idempotent
 test_hold_deduplicates_each_decision_comment
 test_resolve_comments_and_clears_label
 test_attach_pr_validates_url

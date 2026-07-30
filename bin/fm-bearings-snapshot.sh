@@ -321,7 +321,7 @@ if fm_linear_backend_selected "$CONFIG"; then
   LINEAR_DONE=$(printf '%s' "$LINEAR_QUEUE" | jq -c \
     '[ .[] | select(.bucket == "done")
        | {id: .identifier, title, pr_url: null, report_path: null, local_note: .url,
-          completion: {date: .completed}, home: "(main)", home_id: "(main)"} ]') || exit 1
+          completion: {date: .completed}, home: "linear", home_id: "linear"} ]') || exit 1
   LINEAR_ELSEWHERE=$(printf '%s' "$LINEAR_QUEUE" | jq -c --arg captain "$FM_LINEAR_CAPTAIN_LABEL" --argjson linked "$LINKED" \
     '[ .[] | select(.bucket == "in_flight"
                     and ((.labels | index($captain)) | not)
@@ -331,9 +331,8 @@ if fm_linear_backend_selected "$CONFIG"; then
   LINEAR_LOCAL_MATE_QUEUED=$(printf '%s' "$SNAP" | jq '
     [ (.secondmate_current.records // [])[]
       | select(.provenance.selected == "structured-home")
-      | .queued[]?
-      | select(.captain_actionable != true) ]
-    | length') || exit 1
+      | (.counts.queued // ((.queued // []) | length)) ]
+    | add // 0') || exit 1
   USE_LINEAR=1
 fi
 
@@ -530,7 +529,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         (if $f_endpoints then empty else {surface:"healthy endpoint detail", reveal:"--fields endpoints"} end),
         (if $all_reports == 1 then empty else {surface:"full scout-report inventory", reveal:"--all-reports"} end),
         (if $all_queued == 1 then empty else {surface:"superseded queued items", reveal:"--all-queued"} end),
-        (if $all_landed == 0 and ($per_home_capped | length) > ($done | length) then {surface:("landed showing \($done | length) of \($per_home_capped | length)" + (($done | map(.home_id) | unique | map(select(. != "(main)")) | length) as $k | if $k > 0 then " (incl. \($k) secondmate home(s))" else "" end)), reveal:"--all-landed"} else empty end),
+        (if $all_landed == 0 and ($per_home_capped | length) > ($done | length) then {surface:("landed showing \($done | length) of \($per_home_capped | length)" + (($done | map(.home_id) | unique | map(select(. != "(main)" and . != "linear")) | length) as $k | if $k > 0 then " (incl. \($k) secondmate home(s))" else "" end)), reveal:"--all-landed"} else empty end),
         (if $all_landed == 0 and $home_cap_dropped > 0 then {surface:("landed per-home capped at \($landed_per_home_n) for \($home_cap_dropped) home(s)"), reveal:"--all-landed"} else empty end),
         (if (($snap.secondmate_landed.unreadable // []) | length) > 0 then {surface:("secondmate home(s) with unreadable backlog: \(($snap.secondmate_landed.unreadable // []) | length)"), reveal:"inspect the listed secondmate home backlogs"} else empty end),
         (if $all_landed == 0 and (($snap.secondmate_landed.truncated // []) | length) > 0 then {surface:("secondmate home Done capped at the snapshot layer for \(($snap.secondmate_landed.truncated // []) | length) home(s)"), reveal:"--all-landed"} else empty end),

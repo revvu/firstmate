@@ -145,7 +145,7 @@ command_start() {
 }
 
 command_done() {
-  local id=${1:-} pr='' report='' note='' issue uuid
+  local id=${1:-} pr='' report='' note='' issue uuid comment=''
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   require_identifier "$id"
   shift
@@ -166,16 +166,19 @@ command_done() {
     fm_linear_attach_url "$uuid" "$pr" "Pull request"
   fi
   if [ -n "$report" ]; then
-    fm_linear_comment "$uuid" "Completed - report at $report in the firstmate home."
+    comment="Completed - report at $report in the firstmate home."
   elif [ -n "$note" ]; then
-    fm_linear_comment "$uuid" "Completed - $note"
+    comment="Completed - $note"
+  fi
+  if [ -n "$comment" ]; then
+    fm_linear_comment_once "$id" "$uuid" "$comment" >/dev/null
   fi
   fm_linear_move "$id" completed
   printf 'completed: %s\n' "$id"
 }
 
 command_hold() {
-  local id=${1:-} reason='' issue uuid label_id comment comments
+  local id=${1:-} reason='' issue uuid label_id comment comment_result
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   require_identifier "$id"
   shift
@@ -195,17 +198,16 @@ command_hold() {
     fm_linear_label_add "$uuid" "$label_id"
   fi
   comment="Captain decision needed: $reason"
-  comments=$(fm_linear_issue_comments_json "$id") || exit 1
-  if printf '%s' "$comments" | jq -e --arg comment "$comment" 'index($comment) != null' >/dev/null; then
+  comment_result=$(fm_linear_comment_once "$id" "$uuid" "$comment") || exit 1
+  if [ "$comment_result" = existing ]; then
     printf 'already held: %s\n' "$id"
     return 0
   fi
-  fm_linear_comment "$uuid" "$comment"
   printf 'held: %s\n' "$id"
 }
 
 command_resolve() {
-  local id=${1:-} decision_file='' decision='' keep_held=0 issue uuid label_id
+  local id=${1:-} decision_file='' decision='' keep_held=0 issue uuid label_id comment
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   require_identifier "$id"
   shift
@@ -225,9 +227,10 @@ command_resolve() {
   issue=$(fm_linear_issue_json "$id") || exit 1
   uuid=$(printf '%s' "$issue" | jq -r '.id')
   if [ -n "$decision" ]; then
-    fm_linear_comment "$uuid" "Captain decision:
+    comment="Captain decision:
 
 $decision"
+    fm_linear_comment_once "$id" "$uuid" "$comment" >/dev/null
   fi
   if [ "$keep_held" = 1 ]; then
     printf 'resolved: %s (still held for other open decisions)\n' "$id"

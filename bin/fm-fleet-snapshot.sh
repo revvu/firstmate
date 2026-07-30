@@ -540,7 +540,6 @@ task_json_lines() {
                   else "unknown" end),
           observed_at:$observed_at,freshness:"fresh"},
         pr:{url:($pr | if . == "" then null else . end),source:$pr_source},
-        linear:($linear | if . == "" then null else . end),
         hints:{
           pending_decision:$pending_decision,
           blocked_event:$blocked_event,
@@ -558,7 +557,8 @@ task_json_lines() {
              steer:"bin/fm-send.sh fm-\($id) \u0027<instruction>\u0027",
              return_channel_note:null}
           end)
-      }'
+      }
+      + (if $linear == "" then {} else {linear:$linear} end)'
   done | jq -s 'sort_by(.id)'
 }
 

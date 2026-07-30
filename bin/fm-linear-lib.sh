@@ -247,6 +247,17 @@ fm_linear_comment() {
     || { echo "fm-linear: Linear did not confirm the comment" >&2; return 1; }
 }
 
+fm_linear_comment_once() {
+  local comments
+  comments=$(fm_linear_issue_comments_json "$1") || return 1
+  if printf '%s' "$comments" | jq -e --arg comment "$3" 'index($comment) != null' >/dev/null; then
+    printf 'existing\n'
+    return 0
+  fi
+  fm_linear_comment "$2" "$3" || return 1
+  printf 'posted\n'
+}
+
 # fm_linear_attach_url <issue-uuid> <url> <title> - attach one link.
 fm_linear_attach_url() {
   local body

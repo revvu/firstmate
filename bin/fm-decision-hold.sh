@@ -256,15 +256,17 @@ hold_is_active() {  # <hold-id>
 }
 
 linear_mirror_hold() {  # <origin-id> <decision-key> <reason>
-  local issue
+  local issue reason retry_command
   issue=$(linear_origin_issue "$1") || return 0
-  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" hold "$issue" --reason "[$2] $3" >/dev/null; then
-    echo "fm-decision-hold: warning: could not mirror the captain hold to Linear issue $issue; retry with: bin/fm-backlog-linear.sh hold $issue --reason '[$2] $3'" >&2
+  reason="[$2] $3"
+  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh hold "$issue" --reason "$reason")
+  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" hold "$issue" --reason "$reason" >/dev/null; then
+    echo "fm-decision-hold: warning: could not mirror the captain hold to Linear issue $issue; retry with: $retry_command" >&2
   fi
 }
 
 linear_mirror_resolve() {  # <origin-id> <decision-key> <decision-file>
-  local issue keys key keep=()
+  local issue keys key retry_command keep=()
   issue=$(linear_origin_issue "$1") || return 0
   # Keep the captain-call label while any other recorded hold on the same
   # origin is still awaiting the captain; the label mirrors the issue's overall
@@ -280,9 +282,11 @@ linear_mirror_resolve() {  # <origin-id> <decision-key> <decision-file>
   done <<EOF
 $(printf '%s\n' "$keys" | tr ',' '\n')
 EOF
+  retry_command=$(fm_linear_command_string bin/fm-backlog-linear.sh resolve "$issue" --decision-file "$3" \
+    "${keep[@]+"${keep[@]}"}")
   if ! "$SCRIPT_DIR/fm-backlog-linear.sh" resolve "$issue" --decision-file "$3" \
     "${keep[@]+"${keep[@]}"}" >/dev/null; then
-    echo "fm-decision-hold: warning: could not mirror the recorded decision to Linear issue $issue; retry with: bin/fm-backlog-linear.sh resolve $issue --decision-file $3 ${keep[*]+"${keep[*]}"}" >&2
+    echo "fm-decision-hold: warning: could not mirror the recorded decision to Linear issue $issue; retry with: $retry_command" >&2
   fi
 }
 
