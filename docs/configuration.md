@@ -45,6 +45,9 @@ Bootstrap requires compatible `tasks-axi` on every profile; see "Toolchain" belo
 Set the local, gitignored `config/backlog-backend` file to `manual` to force manual backlog editing and suppress the verbose `BOOTSTRAP_INFO: tasks-axi available` fact, not missing-tool reporting.
 Absent or `tasks-axi` selects the default tasks-axi backend.
 The file format is unchanged in both modes; tasks-axi and manual edits produce the same `## In flight`, `## Queued`, and `## Done` sections.
+Set it to `linear` to host the durable work-item queue in Linear instead of `data/backlog.md`; [`docs/linear-backend.md`](linear-backend.md) is the single owner of that backend's setup, queue definition, state mapping, lifecycle writes, and limits.
+The `linear` value needs `LINEAR_API_KEY` in the home's gitignored `.env`, and every Linear command refuses with the concrete missing requirement when the key is absent or rejected.
+Captain decision holds keep their local structured `data/backlog.md` mechanics under every backend value, so compatible `tasks-axi` remains required when `linear` is selected.
 
 ## Runtime backend (config/backend / FM_BACKEND)
 

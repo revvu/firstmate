@@ -103,6 +103,8 @@ PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 
 STATUS_TAIL=${FM_SESSION_START_STATUS_TAIL:-5}
 case "$STATUS_TAIL" in ''|*[!0-9]*) STATUS_TAIL=5 ;; esac
@@ -195,6 +197,10 @@ print_backlog_tasks_axi_compact() {
 print_backlog_compact() {
   local path=$1 label=$2
   subsection "$label"
+  if fm_linear_backend_selected "$CONFIG"; then
+    printf 'Linear backlog backend selected: the durable work-item queue lives in Linear.\n'
+    printf 'Read it with bin/fm-backlog-linear.sh list; the local records below carry captain decision holds and any not-yet-migrated items only (docs/linear-backend.md).\n'
+  fi
   if [ -f "$path" ]; then
     if [ -s "$path" ]; then
       if fm_tasks_axi_backend_available "$CONFIG"; then

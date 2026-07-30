@@ -10,6 +10,12 @@
 # in the originating task's metadata, and closes a hold only after a durable
 # decision record has been linked to existing dependent work.
 #
+# When the Linear backlog backend is selected and the origin task records a
+# linear= issue link, hold and resolve additionally mirror the decision to that
+# issue (captain-call label plus one comment; docs/linear-backend.md). The
+# local structured hold stays the load-bearing record; a failed mirror warns
+# with a retry command and never fails the local mechanics.
+#
 # A hold identity is <origin-id>-decision-<decision-key>. Origin ids and decision
 # keys must already be privacy-safe slugs. Repeating `hold` with the same identity
 # is idempotent. A different decision key creates a different backlog identity.
@@ -44,6 +50,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
 # shellcheck source=bin/fm-classify-lib.sh
 # shellcheck disable=SC1091
@@ -51,6 +58,9 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 
 usage() {
   awk '
@@ -223,6 +233,59 @@ verify_resolution_identity() {
     || fail "captain hold $id records different routed work"
 }
 
+# --- Linear mirror (docs/linear-backend.md) ---------------------------------
+# When the Linear backlog backend is selected and the origin task is linked to
+# an issue (linear= in its meta), a captain hold is additionally mirrored to
+# that issue as the captain-call label plus one comment, and cleared on
+# resolve. The local structured hold above stays the load-bearing record; a
+# failed mirror warns with the exact retry command and never fails the local
+# mechanics.
+
+linear_origin_issue() {  # <origin-id>
+  fm_linear_backend_selected "$CONFIG" || return 1
+  local issue
+  issue=$(meta_value "$STATE/$1.meta" linear)
+  [ -n "$issue" ] || return 1
+  printf '%s\n' "$issue"
+}
+
+hold_is_active() {  # <hold-id>
+  local show
+  show=$(task_show "$1") || return 1
+  [ "$(show_field "$show" state)" = queued ] && [ "$(show_field "$show" held)" = yes ]
+}
+
+linear_mirror_hold() {  # <origin-id> <decision-key> <reason>
+  local issue
+  issue=$(linear_origin_issue "$1") || return 0
+  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" hold "$issue" --reason "[$2] $3" >/dev/null; then
+    echo "fm-decision-hold: warning: could not mirror the captain hold to Linear issue $issue; retry with: bin/fm-backlog-linear.sh hold $issue --reason '[$2] $3'" >&2
+  fi
+}
+
+linear_mirror_resolve() {  # <origin-id> <decision-key> <decision-file>
+  local issue keys key keep=()
+  issue=$(linear_origin_issue "$1") || return 0
+  # Keep the captain-call label while any other recorded hold on the same
+  # origin is still awaiting the captain; the label mirrors the issue's overall
+  # needs-a-decision state, not one key.
+  keys=$(sorted_key_union "$(meta_value "$STATE/$1.meta" decision_keys)" "$2")
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    [ "$key" != "$2" ] || continue
+    if hold_is_active "$(hold_id "$1" "$key")"; then
+      keep=(--keep-held)
+      break
+    fi
+  done <<EOF
+$(printf '%s\n' "$keys" | tr ',' '\n')
+EOF
+  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" resolve "$issue" --decision-file "$3" \
+    "${keep[@]+"${keep[@]}"}" >/dev/null; then
+    echo "fm-decision-hold: warning: could not mirror the recorded decision to Linear issue $issue; retry with: bin/fm-backlog-linear.sh resolve $issue --decision-file $3 ${keep[*]+"${keep[*]}"}" >&2
+  fi
+}
+
 command_id() {
   [ "$#" -eq 2 ] || { usage >&2; exit 2; }
   hold_id "$1" "$2"
@@ -271,6 +334,7 @@ command_hold() {
   tasks_axi hold "$id" --reason "$reason" --kind captain >/dev/null \
     || fail "could not activate captain hold $id"
   verify_hold_active "$id"
+  linear_mirror_hold "$origin" "$key" "$reason"
   printf '%s\n' "$id"
 }
 
@@ -450,6 +514,7 @@ command_resolve() {
   done
   tasks_axi "done" "$id" >/dev/null || fail "could not close resolved captain hold $id"
   verify_hold_resolved "$id" || fail "captain hold $id did not retain its durable resolution record"
+  linear_mirror_resolve "$origin" "$key" "$decision_file"
   printf 'resolved: %s -> %s\n' "$id" "$routed"
 }
 

@@ -98,6 +98,8 @@ SECONDMATE_REG="$DATA/secondmates.md"
 SUB_HOME_MARKER=".fm-secondmate-home"
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-lock-lib.sh
@@ -132,6 +134,7 @@ T_ORCA=
 "$FM_ROOT/bin/fm-guard.sh" || true
 HOME_PATH=$(grep '^home=' "$META" | cut -d= -f2- || true)
 PR_URL=$(grep '^pr=' "$META" | tail -1 | cut -d= -f2- || true)
+LINEAR_ID=$(grep '^linear=' "$META" | tail -1 | cut -d= -f2- || true)
 # tasktmp is recorded by fm-spawn for tasks that set up a per-task temp root
 # (/tmp/fm-<id>/); absent for tasks spawned before that change, so tolerate empty.
 TASK_TMP=$(grep '^tasktmp=' "$META" | cut -d= -f2- || true)
@@ -424,6 +427,10 @@ work_is_landed() {
 backlog_refresh_reminder() {
   local pr done_cmd report_path
   [ "$KIND" = secondmate ] && return 0
+  if fm_linear_backend_selected "$CONFIG"; then
+    linear_backlog_refresh
+    return 0
+  fi
   if fm_tasks_axi_backend_available "$CONFIG"; then
     case "$KIND" in
       scout)
@@ -446,6 +453,39 @@ backlog_refresh_reminder() {
     printf '%s\n' "Backlog: $ID just finished. Run $done_cmd, then run tasks-axi ready for dependency-cleared candidates, check date gates, and dispatch only work whose blockers are gone and date is due."
   else
     printf '%s\n' "Backlog: $ID just finished. Update data/backlog.md - move $ID to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due."
+  fi
+}
+
+# Linear-backend completion recording (docs/linear-backend.md). A normal
+# teardown of a Linear-linked task records completion on the issue itself; a
+# failed write never blocks cleanup and instead prints the exact retry command.
+# A forced teardown skips the write because forced discard is not completion.
+linear_backlog_refresh() {
+  local done_args=()
+  if [ -z "$LINEAR_ID" ]; then
+    printf '%s\n' "Backlog: $ID just finished. The durable queue is Linear: if this work maps to an issue, run bin/fm-backlog-linear.sh done <ISSUE> with its artifact, then re-scan bin/fm-backlog-linear.sh list and dispatch only work whose blockers are gone."
+    return 0
+  fi
+  case "$KIND" in
+    scout) done_args=("$LINEAR_ID" --report "data/$ID/report.md") ;;
+    *)
+      if [ "$MODE" = local-only ]; then
+        done_args=("$LINEAR_ID" --note "landed on local main")
+      elif [ -n "$PR_URL" ]; then
+        done_args=("$LINEAR_ID" --pr "$PR_URL")
+      else
+        done_args=("$LINEAR_ID")
+      fi
+      ;;
+  esac
+  if [ "$FORCE" = "--force" ]; then
+    printf '%s\n' "Backlog: $ID was force-removed; Linear issue $LINEAR_ID was left untouched. Record the real outcome yourself (completed: bin/fm-backlog-linear.sh done ${done_args[*]})."
+    return 0
+  fi
+  if "$FM_ROOT/bin/fm-backlog-linear.sh" "done" "${done_args[@]}" >/dev/null; then
+    printf '%s\n' "Backlog: Linear issue $LINEAR_ID recorded as completed. Re-scan bin/fm-backlog-linear.sh list and dispatch only work whose blockers are gone."
+  else
+    printf '%s\n' "Backlog: $ID just finished but Linear issue $LINEAR_ID could not be updated. Retry with: bin/fm-backlog-linear.sh done ${done_args[*]}"
   fi
 }
 

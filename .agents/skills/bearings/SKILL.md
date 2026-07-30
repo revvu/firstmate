@@ -34,6 +34,7 @@ It never tears down a task, merges a PR, dispatches new work, steers a worker, a
    It is the single bounded, deterministic fleet-state source for Bearings and renders TOON by default.
    Do not create or consult a second fleet-state reader, parser contract, status-event-tail interpretation, visible-session recap, ad-hoc project probe, or ad-hoc `gh-axi`/`gh` query.
    The command's header and `--help` output own its exact fields, bounds, opt-ins, and output contract.
+   When the Linear backlog backend is selected, the snapshot sources its queued/gated, landed, and captain-call decision rows from the Linear queue (rows marked `owner: linear`, plus a `backlog_backend: linear` marker), while Underway stays sourced from local runtime records; a locally held decision mirrored to a linked issue can appear under both its local hold id and its Linear issue until resolved, so merge those into one Captain's Call item when composing the digest.
    Keep the default local-only read unless the captain asks to include PRs.
    For registered secondmates, use the snapshot's structured-home classification and provenance.
    A parent event or bounded terminal contradiction is fallback evidence, never authority over readable structured home state.

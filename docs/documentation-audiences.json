@@ -256,6 +256,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/linear-backend.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/orca-backend.md",
       "audience": "operator-current"
     },

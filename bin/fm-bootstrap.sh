@@ -97,6 +97,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-tasks-axi-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh disable=SC1091
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 # shellcheck source=bin/fm-tangle-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-tangle-lib.sh"
 # shellcheck source=bin/fm-ff-lib.sh disable=SC1091
@@ -895,6 +897,19 @@ crew_dispatch_validate
 if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ] \
   && ! fm_backlog_backend_manual "$CONFIG" && fm_tasks_axi_compatible; then
   echo "BOOTSTRAP_INFO: tasks-axi available"
+fi
+# Linear backlog backend (docs/linear-backend.md): the queue is unreadable
+# without curl, jq, and this home's own LINEAR_API_KEY, so surface each missing
+# requirement here instead of at first queue use.
+if fm_linear_backend_selected "$CONFIG"; then
+  for t in curl jq; do
+    command -v "$t" >/dev/null || missing_tool_diagnostic "$t"
+  done
+  if [ -z "$(fm_linear_api_key)" ]; then
+    echo "MISSING_MANUAL: LINEAR_API_KEY (instructions: add LINEAR_API_KEY=<key> to $(fm_linear_env_file) - see docs/linear-backend.md)"
+  elif [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ]; then
+    echo "BOOTSTRAP_INFO: Linear backlog backend active"
+  fi
 fi
 if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
   secondmate_liveness_sweep

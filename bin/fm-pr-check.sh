@@ -12,9 +12,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-linear-lib.sh
+. "$SCRIPT_DIR/fm-linear-lib.sh"
 
 if [ "$#" -ne 2 ]; then
   echo "error: invalid PR check request" >&2
@@ -120,3 +123,13 @@ fm_pr_poll_publish_prepared || {
   exit 1
 }
 printf 'armed: state/%s.check.sh\n' "$ID"
+
+# Linear-backend PR recording (docs/linear-backend.md): attach the canonical PR
+# to the linked issue. Best-effort - the poll is already armed, so a failed
+# write warns with the exact retry command instead of failing the arm.
+LINEAR_ID=$(grep '^linear=' "$META" | tail -1 | cut -d= -f2- || true)
+if [ -n "$LINEAR_ID" ] && fm_linear_backend_selected "$CONFIG"; then
+  if ! "$SCRIPT_DIR/fm-backlog-linear.sh" attach-pr "$LINEAR_ID" "$URL" >/dev/null; then
+    echo "warning: could not attach the PR to Linear issue $LINEAR_ID; retry with: bin/fm-backlog-linear.sh attach-pr $LINEAR_ID $URL" >&2
+  fi
+fi
