@@ -35,12 +35,12 @@
 #      checks" from "checks green, waiting on merge" (see nm_ci_checks_state) -
 #      a ci-step log-tail check overrides working -> done once checks read
 #      green, so a green PR is never silently read as still-validating.
-#      A run still reading working also carries the tool's OWN active-step
-#      liveness facts in its detail - how long the step has been active, the
-#      round, the native agent pid, and whether no-mistakes has flagged the
-#      step quiet (see nm_active_step_detail). Those are read from `axi
-#      status`, never inferred from process heuristics, and they are a
-#      liveness clue only: nothing here acts on them.
+#      When a run still reading working publishes an active-step row, its detail
+#      carries the available liveness facts - active duration, last-activity
+#      age, round, optional native-agent pid, and whether no-mistakes has flagged
+#      the step quiet (see nm_active_step_detail). Those are read from `axi
+#      status`, never inferred from process heuristics, and they are a liveness
+#      clue only: nothing here acts on them.
 #   3. Reconcile the status log: if its last line says needs-decision/blocked but
 #      the run-step shows the run moved on, the log is deterministically stale and
 #      is flagged superseded. A genuinely parked run plus a needs-decision log
