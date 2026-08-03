@@ -35,6 +35,12 @@
 #      checks" from "checks green, waiting on merge" (see nm_ci_checks_state) -
 #      a ci-step log-tail check overrides working -> done once checks read
 #      green, so a green PR is never silently read as still-validating.
+#      When a run still reading working publishes an active-step row, its detail
+#      carries the available liveness facts - active duration, last-activity
+#      age, round, optional native-agent pid, and whether no-mistakes has flagged
+#      the step quiet (see nm_active_step_detail). Those are read from `axi
+#      status`, never inferred from process heuristics, and they are a liveness
+#      clue only: nothing here acts on them.
 #   3. Reconcile the status log: if its last line says needs-decision/blocked but
 #      the run-step shows the run moved on, the log is deterministically stale and
 #      is flagged superseded. A genuinely parked run plus a needs-decision log
@@ -291,6 +297,135 @@ log_reports_ci_ready() {
     *PR*"checks green"*|*"checks green"*PR*) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# --- active-step liveness ---------------------------------------------------
+# While a step is actively running or fixing, `axi status` publishes an
+# `active_steps` table that this reader used to ignore completely: how long the
+# step has been active, when its last step-log or native-agent lifecycle event
+# arrived, the native agent's pid, and the current round. That is the liveness
+# signal the tool already computes, so the fleet reads it instead of inferring
+# the same thing from process heuristics.
+#
+# Observed shape, captured from the INSTALLED binary (no-mistakes v1.37.0) on a
+# live run on 2026-08-02 - not from upstream source or docs:
+#
+#   active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+#     review,fixing,1h59m,"44s ago: log: {\"summary\":\"The findings are legit...","56060",fix 1
+#
+# Two observed properties drive the parsing. last_activity is a TOON-quoted
+# string carrying raw log payload, so it routinely contains commas, colons and
+# backslash-escaped quotes and the row cannot be split on bare commas. And the
+# column set is taken from the header rather than assumed positional, so a
+# future column order or an absent optional column (agent_pid is only present
+# when a subprocess agent is running) degrades to fewer facts, never to a
+# mis-read field.
+#
+# no-mistakes prefixes last_activity with `quiet ` once step_quiet_warning
+# (default 10m) passes with no activity. Per the tool's own guidance that is a
+# LIVENESS CLUE ONLY and never permission to cancel, rerun, or hand-edit the
+# worktree, so the surfaced text stays descriptive and says so.
+#
+# Emits `<key>\t<value>` lines (step/status/active_for/quiet/activity_age/
+# agent_pid/round) for the first running-or-fixing row, and nothing at all when
+# the run has no active_steps table. Values are bounded and sanitized: only the
+# leading age phrase of last_activity is kept, never its log payload.
+nm_active_step_fields() {
+  printf '%s\n' "$RUN_OUT" | awk '
+    function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    function unq(s) {
+      s = trim(s)
+      if (length(s) >= 2 && substr(s, 1, 1) == "\"" && substr(s, length(s), 1) == "\"") {
+        s = substr(s, 2, length(s) - 2)
+        gsub(/\\"/, "\"", s)
+        gsub(/\\\\/, "\\", s)
+      }
+      return s
+    }
+    # Split a TOON table row on commas that are OUTSIDE a quoted field, honoring
+    # backslash escapes, and return the field count in out[].
+    function splitrow(s, out,   i, c, cur, inq, esc, k) {
+      k = 0; cur = ""; inq = 0; esc = 0
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (esc)            { cur = cur c; esc = 0; continue }
+        if (c == "\\" && inq) { cur = cur c; esc = 1; continue }
+        if (c == "\"")      { cur = cur c; inq = !inq; continue }
+        if (c == "," && !inq) { out[++k] = cur; cur = ""; continue }
+        cur = cur c
+      }
+      out[++k] = cur
+      return k
+    }
+    # Reduce last_activity to a short, safe age phrase: strip the quiet prefix
+    # (recorded separately), keep only what precedes the first colon, drop any
+    # character outside a conservative set, and cap the length.
+    function age_of(s) {
+      if (index(s, ":") > 0) s = substr(s, 1, index(s, ":") - 1)
+      gsub(/[^A-Za-z0-9 ._\/+-]/, "", s)
+      s = trim(s)
+      if (length(s) > 40) s = substr(s, 1, 40)
+      return s
+    }
+    !seen && /^[ \t]*active_steps\[[0-9]+\]\{[^}]*\}:[ \t]*$/ {
+      hdr = $0
+      sub(/^[^{]*\{/, "", hdr)
+      sub(/\}.*$/, "", hdr)
+      ncol = split(hdr, cols, ",")
+      for (i = 1; i <= ncol; i++) col[trim(cols[i])] = i
+      inblock = 1
+      next
+    }
+    inblock {
+      if (trim($0) == "") next
+      nf = splitrow($0, f)
+      # Anything that is not a row of this table - a following key, a new table
+      # header, another table body - ends the block rather than being read as an
+      # active step with mismatched columns.
+      if (nf != ncol) { inblock = 0; next }
+      status = ("status" in col && col["status"] <= nf) ? unq(f[col["status"]]) : ""
+      if (status != "running" && status != "fixing") next
+      seen = 1; inblock = 0
+      la = ("last_activity" in col && col["last_activity"] <= nf) ? unq(f[col["last_activity"]]) : ""
+      quiet = 0
+      if (la ~ /^quiet([ \t]|$)/) { quiet = 1; sub(/^quiet[ \t]*/, "", la) }
+      printf "step\t%s\n", ("step" in col && col["step"] <= nf) ? unq(f[col["step"]]) : ""
+      printf "status\t%s\n", status
+      printf "active_for\t%s\n", ("active_for" in col && col["active_for"] <= nf) ? unq(f[col["active_for"]]) : ""
+      printf "quiet\t%s\n", quiet
+      printf "activity_age\t%s\n", age_of(la)
+      printf "agent_pid\t%s\n", ("agent_pid" in col && col["agent_pid"] <= nf) ? unq(f[col["agent_pid"]]) : ""
+      printf "round\t%s\n", ("round" in col && col["round"] <= nf) ? unq(f[col["round"]]) : ""
+    }
+  '
+}
+
+# One detail clause describing the active step, or empty when there is none.
+nm_active_step_detail() {
+  local k v step="" active_for="" quiet="" age="" pid="" round="" out
+  while IFS=$'\t' read -r k v; do
+    case "$k" in
+      step)         step=$v ;;
+      active_for)   active_for=$v ;;
+      quiet)        quiet=$v ;;
+      activity_age) age=$v ;;
+      agent_pid)    pid=$v ;;
+      round)        round=$v ;;
+    esac
+  done < <(nm_active_step_fields)
+  [ -n "$step" ] || return 0
+  out="active step $step"
+  [ -n "$round" ] && out="$out ($round)"
+  [ -n "$active_for" ] && out="$out for $active_for"
+  if [ "$quiet" = 1 ]; then
+    out="$out, quiet"
+    [ -n "$age" ] && out="$out since $age"
+    out="$out (no step activity; liveness clue only)"
+  elif [ -n "$age" ]; then
+    out="$out, last activity $age"
+  fi
+  [ -n "$pid" ] && out="$out, agent pid $pid"
+  printf '%s' "$out"
 }
 
 nm_ci_step_status() {
@@ -557,6 +692,12 @@ if [ "$HAVE_RUN" = 1 ]; then
             CI_LOG_STATE=not-ready
             ;;
         esac
+      fi
+      # Still working after the ci-green override: append the tool's own
+      # active-step liveness facts (see nm_active_step_detail).
+      if [ "$RUN_STATE" = working ]; then
+        ACTIVE_DETAIL=$(nm_active_step_detail)
+        [ -n "$ACTIVE_DETAIL" ] && RUN_DETAIL="$RUN_DETAIL${SEP}$ACTIVE_DETAIL"
       fi
     fi
   fi
