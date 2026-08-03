@@ -334,6 +334,107 @@ run:
 EOF
 }
 
+# --- active_steps fixtures --------------------------------------------------
+# `axi status` publishes an active_steps table while a step is running or
+# fixing. These fixtures reproduce the shape captured from the INSTALLED
+# no-mistakes v1.37.0 on a live run (2026-08-02), including the two properties
+# that break naive parsing: last_activity is a TOON-quoted string carrying raw
+# log payload, so it contains commas, colons and backslash-escaped quotes, and
+# agent_pid comes back quoted. The row body is a quoted heredoc so those
+# backslashes reach the helper exactly as the CLI emits them.
+
+run_running_active_step() {  # <branch>
+  cat <<EOF
+run:
+  id: "01RUN"
+  branch: $1
+  status: running
+  head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+  pr: ""
+  findings: "3 awaiting, 1 auto-fix"
+  steps[2]{step,status,findings,duration_ms}:
+    intent,completed,0,14783
+    review,fixing,4,132009
+EOF
+  cat <<'EOF'
+  active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+    review,fixing,1h59m,"44s ago: log: {\"summary\":\"one root cause, several files\"}","56060",fix 1
+EOF
+}
+
+# Same run, with no-mistakes' own quiet marker on last_activity.
+run_running_active_step_quiet() {  # <branch>
+  cat <<EOF
+run:
+  id: "01RUN"
+  branch: $1
+  status: running
+  head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+  pr: ""
+  findings: none
+  steps[2]{step,status,findings,duration_ms}:
+    intent,completed,0,14783
+    test,running,0,0
+EOF
+  cat <<'EOF'
+  active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+    test,running,3h4m,"quiet 47m ago: log: still installing deps, no output","56060",round 1
+EOF
+}
+
+# A step with no native subprocess agent: no agent_pid column at all. The
+# reader maps columns by header name, so this degrades to fewer facts rather
+# than to a mis-read field.
+run_running_active_step_no_agent() {  # <branch>
+  cat <<EOF
+run:
+  id: "01RUN"
+  branch: $1
+  status: running
+  head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+  pr: ""
+  findings: none
+  steps[2]{step,status,findings,duration_ms}:
+    intent,completed,0,0
+    lint,running,0,0
+EOF
+  cat <<'EOF'
+  active_steps[1]{step,status,active_for,last_activity,round}:
+    lint,running,12s,"3s ago: log: running lint",round 1
+EOF
+}
+
+# active_steps followed by another table whose rows also carry a `running`
+# status: only rows of the active_steps table itself may be read as active.
+run_active_step_then_steps_table() {  # <branch>
+  cat <<EOF
+run:
+  id: "01RUN"
+  branch: $1
+  status: running
+  head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+  pr: ""
+  findings: none
+EOF
+  cat <<'EOF'
+  active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+    review,running,4m,"9s ago: log: reviewing","4242",round 1
+  steps[2]{step,status,findings,duration_ms}:
+    intent,completed,0,0
+    test,running,0,0
+EOF
+}
+
+# The ci step monitoring a green PR, WITH its active_steps row. The active row
+# repeats `ci,running,...`, so this pins that the ci-green override still wins.
+run_ci_monitoring_active_step() {  # <branch>
+  run_ci_monitoring "$1"
+  cat <<'EOF'
+  active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+    ci,running,21m,"2m ago: log: all CI checks passed - still monitoring until merged or closed","",round 1
+EOF
+}
+
 # ---------------------------------------------------------------------------
 # (a) active run-step is authoritative
 test_active_run_is_authoritative() {
@@ -1232,7 +1333,114 @@ test_missing_run_head_falls_back_to_current_state() {
   pass "missing run head falls back instead of matching by branch"
 }
 
+# --- active-step liveness ---------------------------------------------------
+# no-mistakes already publishes, per active step, how long it has been active,
+# when its last step-log or agent-lifecycle event arrived, the native agent pid,
+# and the round. These cases pin that the reader surfaces those facts instead of
+# leaving the fleet to infer liveness from process heuristics - and that they
+# only ever annotate the state, never change it.
+
+test_active_step_liveness_surfaced() {
+  reset_fakes
+  local d; d=$(new_case active-step)
+  make_repo_on_branch "$d/wt" fm/feat-as
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-as.meta" "window=fm:fm-feat-as" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running_active_step fm/feat-as)"
+  local out; out=$(run_crew_state "$d" feat-as)
+  assert_contains "$out" "state: working" "active step still reports working"
+  assert_contains "$out" "source: run-step" "active step keeps the run-step source"
+  assert_contains "$out" "validating (running)" "existing run detail is preserved"
+  assert_contains "$out" "active step review (fix 1)" "names the active step and its round"
+  assert_contains "$out" "for 1h59m" "surfaces how long the step has been active"
+  assert_contains "$out" "last activity 44s ago" "surfaces the last-activity age"
+  assert_contains "$out" "agent pid 56060" "surfaces the native agent pid"
+  assert_not_contains "$out" "summary" "the quoted log payload is never dumped into the line"
+  [ "$(printf '%s\n' "$out" | grep -c '')" = 1 ] || fail "active-step detail must stay on one line"
+  pass "active-step liveness is surfaced from the tool's own signal"
+}
+
+test_active_step_quiet_surfaced_as_clue() {
+  reset_fakes
+  local d; d=$(new_case active-step-quiet)
+  make_repo_on_branch "$d/wt" fm/feat-aq
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-aq.meta" "window=fm:fm-feat-aq" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running_active_step_quiet fm/feat-aq)"
+  local out; out=$(run_crew_state "$d" feat-aq)
+  assert_contains "$out" "state: working" "a quiet step is still working, never a verdict"
+  assert_contains "$out" "active step test (round 1)" "names the quiet step"
+  assert_contains "$out" "quiet since 47m ago" "surfaces the quiet marker and its age"
+  assert_contains "$out" "liveness clue only" "quiet is labelled a clue, not an action"
+  assert_contains "$out" "agent pid 56060" "quiet step still surfaces the agent pid"
+  pass "a quiet step is surfaced as a liveness clue without changing state"
+}
+
+test_active_step_without_agent_pid_degrades() {
+  reset_fakes
+  local d; d=$(new_case active-step-nopid)
+  make_repo_on_branch "$d/wt" fm/feat-an
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-an.meta" "window=fm:fm-feat-an" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running_active_step_no_agent fm/feat-an)"
+  local out; out=$(run_crew_state "$d" feat-an)
+  assert_contains "$out" "state: working" "absent agent_pid column still reports working"
+  assert_contains "$out" "active step lint (round 1)" "columns are mapped by header name"
+  assert_contains "$out" "for 12s" "active duration read from the right column"
+  assert_contains "$out" "last activity 3s ago" "last activity read from the right column"
+  assert_not_contains "$out" "agent pid" "no pid is claimed when the column is absent"
+  pass "an active step with no agent pid degrades to fewer facts"
+}
+
+test_active_step_row_not_confused_with_later_table() {
+  reset_fakes
+  local d; d=$(new_case active-step-two-tables)
+  make_repo_on_branch "$d/wt" fm/feat-at
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-at.meta" "window=fm:fm-feat-at" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_active_step_then_steps_table fm/feat-at)"
+  local out; out=$(run_crew_state "$d" feat-at)
+  assert_contains "$out" "active step review (round 1)" "the active_steps row is the one read"
+  assert_contains "$out" "for 4m" "duration comes from the active_steps table"
+  assert_not_contains "$out" "active step test" "a later table's running row is not an active step"
+  pass "only rows of the active_steps table are read as active steps"
+}
+
+test_no_active_steps_table_leaves_detail_unchanged() {
+  reset_fakes
+  local d; d=$(new_case no-active-steps)
+  make_repo_on_branch "$d/wt" fm/feat-ao
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-ao.meta" "window=fm:fm-feat-ao" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running fm/feat-ao)"
+  local out; out=$(run_crew_state "$d" feat-ao)
+  [ "$out" = "state: working · source: run-step · validating (running)" ] \
+    || fail "a run with no active_steps table must emit exactly the previous line, got: $out"
+  pass "no active_steps table leaves the existing line byte-identical"
+}
+
+test_ci_green_override_survives_active_step_row() {
+  reset_fakes
+  local d; d=$(new_case active-step-ci-green)
+  make_repo_on_branch "$d/wt" fm/feat-ag
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-ag.meta" "window=fm:fm-feat-ag" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring_active_step fm/feat-ag)"
+  FM_FAKE_CI_LOGS="all CI checks passed - still monitoring until merged or closed"
+  local out; out=$(run_crew_state "$d" feat-ag)
+  assert_contains "$out" "state: done" "a green ci run stays done with an active ci row present"
+  assert_contains "$out" "checks green: PR ready for review" "ci-green detail is preserved"
+  assert_not_contains "$out" "active step" "a terminal-for-review state adds no liveness noise"
+  pass "the ci-green override is unaffected by the active_steps row"
+}
+
 test_active_run_is_authoritative
+test_active_step_liveness_surfaced
+test_active_step_quiet_surfaced_as_clue
+test_active_step_without_agent_pid_degrades
+test_active_step_row_not_confused_with_later_table
+test_no_active_steps_table_leaves_detail_unchanged
+test_ci_green_override_survives_active_step_row
 test_stale_needs_decision_superseded
 test_stale_blocked_superseded
 test_genuine_parked_not_superseded

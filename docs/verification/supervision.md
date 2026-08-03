@@ -196,3 +196,37 @@ Observed output:
 ```
 
 The safe command-channel contract is covered without a notification by `tests/fm-daemon.test.sh`: the summary reaches both `$1` and stdin, every channel is process-group bounded, and a failed channel falls through.
+
+## no-mistakes active-step liveness signal
+
+`bin/fm-crew-state.sh` reads the per-step liveness facts no-mistakes publishes rather than inferring them from process heuristics.
+The parsing is pinned to output observed from the installed binary, not to upstream source or documentation.
+
+Captured on 2026-08-02 with `no-mistakes version v1.37.0 (78e4dcb)`, against a live run whose `review` step was active.
+
+```sh
+no-mistakes axi status
+```
+
+Observed output, abridged to the relevant table (the run's `steps` table and scalar fields are unchanged from their existing coverage):
+
+```
+  active_steps[1]{step,status,active_for,last_activity,agent_pid,round}:
+    review,fixing,1h59m,"44s ago: log: {\"summary\":\"The findings are legitimate and share one root cause: source ownership transitions are not modeled transactionally. I'll lock every existing alias in stable order, make job creation take the same document lock, persist whether b...","56060",fix 1
+```
+
+Three properties of that observation drive the reader's parsing.
+`last_activity` is a TOON-quoted string carrying raw log payload, so it contains commas, colons, and backslash-escaped quotes and the row cannot be split on bare commas.
+`agent_pid` is emitted quoted.
+The column set is therefore read from the table header by name, and a row whose field count does not match the header ends the block instead of being read as an active step.
+
+A second capture of the same run at a later round parsed identically (`review,fixing,2h14m,...,"65428",fix 2`), and an end-to-end `bin/fm-crew-state.sh` read against that live worktree returned:
+
+```
+state: working · source: run-step · validating (running) · active step review (fix 1) for 1h59m, last activity 44s ago, agent pid 56060
+```
+
+UNVERIFIED against a live binary: the `quiet ` prefix that no-mistakes adds to `last_activity` once `step_quiet_warning` (default 10m) elapses.
+No observed run crossed that threshold during the capture window, and forcing it would have required mutating another lane's repository or the shared configuration.
+The reader detects it defensively as a leading `quiet` token and only annotates the line with it; a quiet step never changes the reported state.
+Confirm it against a live quiet step at the next opportunity.
