@@ -451,13 +451,13 @@ test_attach_pr_validates_url() {
 
 test_spawn_linear_validation() {
   local out rc
-  rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test /nonexistent --linear "bad id" 2>&1) || rc=$?
+  rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test /nonexistent --mode no-mistakes --yolo off --linear "bad id" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject a malformed --linear identifier"
   assert_contains "$out" "expects a Linear issue identifier" "spawn names the identifier contract"
   rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test --secondmate --linear GAL-8 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject --linear with --secondmate"
   assert_contains "$out" "does not apply to secondmate" "spawn names the secondmate refusal"
-  rc=0; out=$("$ROOT/bin/fm-spawn.sh" 'a=r1' 'b=r2' --linear GAL-8 2>&1) || rc=$?
+  rc=0; out=$("$ROOT/bin/fm-spawn.sh" 'a=r1' 'b=r2' --mode no-mistakes --yolo off --linear GAL-8 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject a shared --linear in batch mode"
   assert_contains "$out" "cannot be shared across a batch" "spawn names the batch refusal"
   pass "spawn --linear validation refusals"
