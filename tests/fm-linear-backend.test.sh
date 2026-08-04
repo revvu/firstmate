@@ -42,7 +42,14 @@ for arg in "$@"; do
     @*)
       header_file=${arg#@}
       if grep -Fx 'Authorization: lin_api_test_fixture' "$header_file" >/dev/null 2>&1; then
-        mode=$(stat -f %Lp "$header_file" 2>/dev/null || stat -c %a "$header_file")
+        # Probe the mode by platform rather than by fallback: GNU `stat -f` is
+        # a filesystem query, not a BSD mode format, so an `|| ` chain can take
+        # the wrong branch on Linux and reject a correctly-private header file.
+        if [ "$(uname -s 2>/dev/null || true)" = Darwin ]; then
+          mode=$(stat -f %Lp "$header_file")
+        else
+          mode=$(stat -c %a "$header_file")
+        fi
         [ "$mode" = 600 ] || exit 91
         printf 'auth-file-ok\n' >> "$(dirname "$FM_FAKE_CURL_LOG")/curl-auth.log"
       fi
@@ -451,13 +458,13 @@ test_attach_pr_validates_url() {
 
 test_spawn_linear_validation() {
   local out rc
-  rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test /nonexistent --linear "bad id" 2>&1) || rc=$?
+  rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test /nonexistent --mode no-mistakes --yolo off --linear "bad id" 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject a malformed --linear identifier"
   assert_contains "$out" "expects a Linear issue identifier" "spawn names the identifier contract"
   rc=0; out=$("$ROOT/bin/fm-spawn.sh" lin-test --secondmate --linear GAL-8 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject --linear with --secondmate"
   assert_contains "$out" "does not apply to secondmate" "spawn names the secondmate refusal"
-  rc=0; out=$("$ROOT/bin/fm-spawn.sh" 'a=r1' 'b=r2' --linear GAL-8 2>&1) || rc=$?
+  rc=0; out=$("$ROOT/bin/fm-spawn.sh" 'a=r1' 'b=r2' --mode no-mistakes --yolo off --linear GAL-8 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "spawn must reject a shared --linear in batch mode"
   assert_contains "$out" "cannot be shared across a batch" "spawn names the batch refusal"
   pass "spawn --linear validation refusals"
