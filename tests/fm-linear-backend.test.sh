@@ -42,7 +42,14 @@ for arg in "$@"; do
     @*)
       header_file=${arg#@}
       if grep -Fx 'Authorization: lin_api_test_fixture' "$header_file" >/dev/null 2>&1; then
-        mode=$(stat -f %Lp "$header_file" 2>/dev/null || stat -c %a "$header_file")
+        # Probe the mode by platform rather than by fallback: GNU `stat -f` is
+        # a filesystem query, not a BSD mode format, so an `|| ` chain can take
+        # the wrong branch on Linux and reject a correctly-private header file.
+        if [ "$(uname -s 2>/dev/null || true)" = Darwin ]; then
+          mode=$(stat -f %Lp "$header_file")
+        else
+          mode=$(stat -c %a "$header_file")
+        fi
         [ "$mode" = 600 ] || exit 91
         printf 'auth-file-ok\n' >> "$(dirname "$FM_FAKE_CURL_LOG")/curl-auth.log"
       fi
