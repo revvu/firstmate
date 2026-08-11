@@ -155,6 +155,27 @@ test_record_without_an_armed_half_still_records() {
   pass "an exit is recorded even when the armed half is absent"
 }
 
+test_retire_removes_records_and_tolerates_absence() {
+  local out
+  "$EXITREC" arm "$STATE" retire-existing || fail "arm before retire failed"
+  "$EXITREC" record "$STATE" retire-existing 137 || fail "record before retire failed"
+  "$EXITREC" retire "$STATE" retire-existing || fail "retire failed"
+  [ ! -e "$STATE/retire-existing.exit" ] || fail "retire left the exit record in place"
+  out=$("$EXITREC" retire "$STATE" retire-absent 2>&1) || fail "retiring an absent record failed"
+  [ -z "$out" ] || fail "retiring an absent record produced output: $out"
+  pass "retire removes an existing record and quietly tolerates absence"
+}
+
+test_retire_reports_removal_failure() {
+  local status
+  mkdir "$STATE/retire-blocked.exit"
+  "$EXITREC" retire "$STATE" retire-blocked >/dev/null 2>&1
+  status=$?
+  [ "$status" -eq 2 ] || fail "failed retirement should exit 2, got $status"
+  [ -d "$STATE/retire-blocked.exit" ] || fail "failed retirement unexpectedly removed its target"
+  pass "retire reports a record-removal failure"
+}
+
 # Corruption must degrade to unknown, never to success.
 test_corrupt_records_read_unreadable() {
   printf 'v=99\nid=bad-version\nexit_status=0\nexit_disposition=clean\n' > "$STATE/bad-version.exit"
@@ -215,5 +236,7 @@ test_signalled_exit_names_signal_and_its_basis
 test_plain_failure_is_abnormal_without_a_signal
 test_record_preserves_the_armed_half
 test_record_without_an_armed_half_still_records
+test_retire_removes_records_and_tolerates_absence
+test_retire_reports_removal_failure
 test_corrupt_records_read_unreadable
 test_usage_errors_exit_2

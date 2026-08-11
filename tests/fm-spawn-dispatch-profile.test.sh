@@ -11,6 +11,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
+EXITREC="$ROOT/bin/fm-exit-record.sh"
+CREW_STATE="$ROOT/bin/fm-crew-state.sh"
 TMP_ROOT=$(fm_test_tmproot fm-spawn-dispatch-profile)
 
 make_spawn_fakebin() {
@@ -385,6 +387,58 @@ test_raw_launch_always_disables_exit_capture() {
   pass "all raw launch commands disable exit capture"
 }
 
+test_composed_to_raw_respawn_retires_prior_exit_record() {
+  local rec id out status state
+  id=profile-raw-respawn
+  rec=$(make_spawn_case profile-raw-respawn claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed launch before raw respawn should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive prior exit could not be recorded"
+  assert_grep 'exit_signal=9' "$HOME_DIR/state/$id.exit" "prior exit record did not carry SIGKILL"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" "custom-agent --flag")
+  status=$?
+  expect_code 0 "$status" "raw same-id respawn should succeed"
+  assert_absent "$HOME_DIR/state/$id.exit" "raw same-id respawn retained the prior exit record"
+  assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "raw same-id respawn did not disable capture"
+  state=$(
+    FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$HOME_DIR/state" \
+      FM_DATA_OVERRIDE="$HOME_DIR/data" FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" \
+      FM_CONFIG_OVERRIDE="$HOME_DIR/config" TMUX="fake,1,0" \
+      PATH="$FAKEBIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "$CREW_STATE" "$id"
+  )
+  assert_contains "$state" 'state: unknown' "raw same-id respawn did not degrade to unknown"
+  assert_not_contains "$state" 'signal 9' "raw same-id respawn reported the prior signal"
+  assert_not_contains "$state" 'SIGKILL' "raw same-id respawn reported the prior signal name"
+  pass "composed-to-raw respawn retires the prior exit record"
+}
+
+test_raw_launch_refuses_failed_exit_record_retirement() {
+  local rec id out status
+  id=profile-raw-retire-failure
+  rec=$(make_spawn_case profile-raw-retire-failure claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  mkdir "$HOME_DIR/state/$id.exit"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" "custom-agent --flag")
+  status=$?
+  [ "$status" -ne 0 ] || fail "raw launch continued after exit-record retirement failed"
+  assert_contains "$out" "could not be retired" "raw launch retirement failure was not reported"
+  assert_not_contains "$(cat "$HOME_DIR/state/$id.meta")" 'exit_capture=off' \
+    "failed retirement was incorrectly published as capture off"
+  [ ! -s "$LAUNCH_LOG" ] || fail "raw launch was sent after exit-record retirement failed"
+  pass "raw launch refuses a failed exit-record retirement"
+}
+
 test_claude_threads_model_and_effort() {
   local rec id out status launch
   id=profile-claude-z2
@@ -702,6 +756,8 @@ test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
 test_raw_launch_always_disables_exit_capture
+test_composed_to_raw_respawn_retires_prior_exit_record
+test_raw_launch_refuses_failed_exit_record_retirement
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort

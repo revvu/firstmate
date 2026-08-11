@@ -68,6 +68,7 @@
 # Usage:
 #   fm-exit-record.sh arm <state-dir> <id>
 #   fm-exit-record.sh record <state-dir> <id> <exit-status>
+#   fm-exit-record.sh retire <state-dir> <id>
 #   fm-exit-record.sh show <state-dir> <id>
 #   fm-exit-record.sh -h | --help
 #
@@ -258,6 +259,13 @@ cmd_record() {  # <state-dir> <id> <exit-status>
   } | atomic_write "$path" || die "could not write $path"
 }
 
+cmd_retire() {  # <state-dir> <id>
+  local state=$1 id=$2 path
+  [ -d "$state" ] || die "state directory does not exist: $state"
+  path=$(record_path "$state" "$id")
+  rm -f -- "$path" || die "could not remove $path"
+}
+
 # --- read -------------------------------------------------------------------
 
 field() {  # <file> <key>
@@ -385,6 +393,10 @@ case "${1:-}" in
   record)
     [ "$#" -eq 4 ] || die "usage: fm-exit-record.sh record <state-dir> <id> <exit-status>"
     cmd_record "$2" "$3" "$4"
+    ;;
+  retire)
+    [ "$#" -eq 3 ] || die "usage: fm-exit-record.sh retire <state-dir> <id>"
+    cmd_retire "$2" "$3"
     ;;
   show)
     [ "$#" -eq 3 ] || die "usage: fm-exit-record.sh show <state-dir> <id>"
