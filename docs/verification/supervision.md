@@ -310,45 +310,40 @@ Confirm it against a live quiet step at the next opportunity.
 
 ## Agent exit capture
 
-This record supports the guarantee that a launched agent's disappearance is self-explaining: `bin/fm-crew-state.sh` reports a recorded abnormal exit with its derived signal instead of `state: unknown · source: none`.
+This record supports the guarantee that a pane shell which observes an agent's abnormal return preserves the status and derived signal for `bin/fm-crew-state.sh` instead of leaving an evidence-free disappearance.
+[`architecture.md`](../architecture.md#event-driven-supervision) owns the current supervision behavior, and `bin/fm-exit-record.sh` owns the exact record contract and interpretation limits.
+The live proof below exercises the shared launch-line mechanism through tmux; herdr, zellij, orca, and cmux use the same delivery path but were not separately exercised for this record.
 
-The capture is appended to the launch line by `bin/fm-spawn.sh`, so it is the pane shell's own `$?` and is delivered by whatever text-send path the selected runtime backend uses.
-It is therefore backend-independent by construction rather than per-adapter, and tmux is where it is proven live; herdr, zellij, orca, and cmux inherit the same mechanism through the shared launch-line delivery.
-Every spawn retires the task id's prior exit record once at common spawn entry before choosing whether to arm capture for the new agent incarnation, and a failed retirement refuses the spawn.
-Every raw launch-command spawn is deliberately excluded from exit capture because its arbitrary shell status cannot be safely attributed to the agent; it warns, records `exit_capture=off` in the task metadata, creates no exit record, and therefore degrades to `unknown` rather than reporting a false exit.
-
-Captured on 2026-08-10 (the record's UTC stamps read 2026-08-11) with tmux 3.7b, bash 5.3.9, zsh 5.9.1, on macOS 26.5.2 arm64.
-A real agent process was spawned through `bin/fm-spawn.sh` into a real tmux pane on a private socket and killed with `kill -9`.
+Captured on 2026-08-11 with tmux 3.7b, bash 5.3.9, zsh 5.9.1, on macOS 26.5.2 arm64.
+`tests/fm-exit-capture-e2e.test.sh` spawned a real stand-in process through `bin/fm-spawn.sh`'s composed Claude launch path into a real tmux pane on a private socket and killed its published process id with `kill -9` under both pane shells.
 
 ```sh
-kill -9 "$(pgrep -f "$AGENT_BIN/fmagent 900" | head -1)"
-cat state/demo.exit
-bin/fm-crew-state.sh demo
+tests/fm-exit-capture-e2e.test.sh
 ```
 
 Observed record, abridged to the exit half (the armed half carries the same fields under an `armed_` prefix):
 
 ```
 exit_status=137
-exit_at=1786406602
-exit_utc=2026-08-11T00:03:22Z
+exit_at=1786464796
+exit_utc=2026-08-11T16:13:16Z
 exit_signal=9
 exit_signal_name=KILL
 exit_signal_basis=exit-status-convention
 exit_disposition=abnormal
-exit_mem_free_mb=58
+exit_mem_free_mb=61
 exit_mem_total_mb=16384
-exit_mem_compressed_mb=5111
-exit_swap_used_mb=13673
+exit_mem_compressed_mb=4797
+exit_swap_used_mb=12891
 exit_swap_total_mb=14336
-exit_load1=3.27
+exit_load1=4.46
 ```
 
 Observed `bin/fm-crew-state.sh` reads, before and after the kill:
 
 ```
-state: unknown · source: pane · harness state unavailable (unknown missing) · agent exit not recorded (exit capture armed 2026-08-11T00:03:21Z)
-state: failed · source: exit-record · agent exited on signal 9 (SIGKILL), from status 137 at 2026-08-11T00:03:22Z; host at exit: 58MB free, 13673MB swap used, load 3.27
+state: working · source: pane · harness busy (fm-spawn) · agent exit not recorded (exit capture armed 2026-08-11T16:13:14Z)
+state: failed · source: exit-record · agent exited on signal 9 (SIGKILL), from status 137 at 2026-08-11T16:13:16Z; host at exit: 61MB free, 12891MB swap used, load 4.46
 ```
 
 The signal number is derived from the shell's 128+N convention, which cannot be distinguished from a program that deliberately exited 128+N; `exit_signal_basis` names that derivation so the reader never presents it as a kernel-reported signal.

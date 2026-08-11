@@ -19,17 +19,16 @@
 # installed, zsh), because the capture rides the launch line and is therefore the
 # pane shell's `$?`, not firstmate's.
 #
-# It needs no harness and no credentials: the stand-in agent is a symlink to a
-# real long-running system binary, the same technique tests/fm-tmux-agent-liveness
-# .test.sh uses (a COPY of a platform binary fails code-signing on macOS arm64).
+# It needs no real harness and no credentials: a tiny executable named `claude`
+# stands in for the verified adapter so fm-spawn still builds and records a real
+# composed launch line rather than taking the raw-launch capture opt-out.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 command -v tmux >/dev/null 2>&1 || { echo "skip: tmux not found"; exit 0; }
-command -v pgrep >/dev/null 2>&1 || { echo "skip: pgrep not found"; exit 0; }
-SLEEP_BIN=$(command -v sleep) || { echo "skip: sleep not found"; exit 0; }
+TAIL_BIN=$(command -v tail) || { echo "skip: tail not found"; exit 0; }
 BASH_BIN=$(command -v bash) || { echo "skip: bash not found"; exit 0; }
 
 REAL_TMUX=$(command -v tmux)
@@ -40,7 +39,12 @@ fm_git_identity fmtest fmtest@example.invalid
 kill_tmux_server() {
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
 }
-trap 'kill_tmux_server; fm_test_cleanup' EXIT
+cleanup_exit_capture() {
+  kill_tmux_server
+  rm -rf "$TMP_ROOT"
+  fm_test_cleanup
+}
+trap cleanup_exit_capture EXIT
 
 # A `tmux` shim so every bare `tmux` call from bin/ reaches the private socket
 # and can never touch the captain's real sessions.
@@ -52,15 +56,7 @@ exec "$REAL_TMUX" -L "$SOCKET" "\$@"
 SH
 chmod +x "$SHIM/tmux"
 
-# The stand-in agent: a long-running process with its own executable identity.
-AGENT_BIN="$TMP_ROOT/bin"
-mkdir -p "$AGENT_BIN"
-ln -s "$SLEEP_BIN" "$AGENT_BIN/fmagent"
-cat > "$AGENT_BIN/fmquit" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-chmod +x "$AGENT_BIN/fmquit"
+EVIDENCE_DIR=${FM_EXIT_CAPTURE_EVIDENCE_DIR:-}
 
 poll() {  # <seconds> <command...> - 0 as soon as the command succeeds
   local deadline=$1; shift
@@ -80,12 +76,22 @@ record_has_exit() {  # <state-dir> <id>
   [ -n "$(record_field "$1" "$2" exit_status)" ]
 }
 
+agent_pid() {  # <fakebin> - PID published by the stand-in immediately before exec
+  cat "$1/agent.pid" 2>/dev/null
+}
+
+agent_is_running() {  # <fakebin>
+  local pid
+  pid=$(agent_pid "$1")
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
 # One complete home + project + worktree, and a fake `treehouse` that moves the
 # pane into that worktree the way the real one does (by exec'ing a shell there),
 # so fm-spawn's own worktree-detection poll settles exactly as in production.
 # <pane-shell> is the shell that ends up reading the launch line.
-make_case() {  # <name> <pane-shell> -> echoes "<home>|<project>|<fakebin>"
-  local name=$1 pane_shell=$2 case_dir home proj wt fakebin
+make_case() {  # <name> <pane-shell> <agent-mode> -> echoes "<home>|<project>|<fakebin>"
+  local name=$1 pane_shell=$2 agent_mode=$3 case_dir home proj wt fakebin pane_flags
   case_dir="$TMP_ROOT/$name"
   home="$case_dir/home"
   proj="$case_dir/project"
@@ -94,10 +100,16 @@ make_case() {  # <name> <pane-shell> -> echoes "<home>|<project>|<fakebin>"
   mkdir -p "$home/data" "$home/state" "$home/projects" "$home/config" "$fakebin"
   fm_git_worktree "$proj" "$wt" "wt-$name"
   touch "$home/state/.last-watcher-beat"
+  case "$(basename "$pane_shell")" in
+    bash) pane_flags='--noprofile --norc' ;;
+    zsh) pane_flags='-f' ;;
+    *) pane_flags= ;;
+  esac
   cat > "$fakebin/treehouse" <<SH
 #!/usr/bin/env bash
 cd "$wt" || exit 1
-exec "$pane_shell"
+export PATH="$fakebin:\$PATH"
+exec "$pane_shell" $pane_flags
 SH
   chmod +x "$fakebin/treehouse"
   # fm-crew-state.sh consults no-mistakes for a matching run; this throwaway
@@ -107,6 +119,20 @@ SH
 exit 0
 SH
   chmod +x "$fakebin/no-mistakes"
+  if [ "$agent_mode" = running ]; then
+    cat > "$fakebin/claude" <<SH
+#!/usr/bin/env bash
+# Become one quiet, long-running system process; the test kills this exact process.
+printf '%s\n' "\$\$" > "$fakebin/agent.pid"
+exec "$TAIL_BIN" -f /dev/null
+SH
+  else
+    cat > "$fakebin/claude" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  fi
+  chmod +x "$fakebin/claude"
   printf '%s|%s|%s\n' "$home" "$proj" "$fakebin"
 }
 
@@ -115,12 +141,17 @@ write_brief() {  # <home> <id>
   printf 'Delivery contract: mode=no-mistakes\nStand-in brief for %s.\n' "$2" > "$1/data/$2/brief.md"
 }
 
-spawn_agent() {  # <home> <project> <fakebin> <id> <launch command>
+spawn_agent() {  # <home> <project> <fakebin> <id>
+  if ! "$REAL_TMUX" -L "$SOCKET" has-session -t firstmate 2>/dev/null; then
+    "$REAL_TMUX" -L "$SOCKET" new-session -d -s firstmate
+  fi
+  "$REAL_TMUX" -L "$SOCKET" set-option -t firstmate default-command \
+    "env PATH=$3:$SHIM:$PATH /bin/sh"
   PATH="$3:$SHIM:$PATH" \
   FM_ROOT_OVERRIDE='' FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' \
   FM_PROJECTS_OVERRIDE='' FM_CONFIG_OVERRIDE='' \
   FM_HOME="$1" FM_BACKEND=tmux FM_SPAWN_NO_GUARD=1 \
-    "$ROOT/bin/fm-spawn.sh" "$4" "$2" "$5" --mode no-mistakes --yolo off 2>&1
+    "$ROOT/bin/fm-spawn.sh" "$4" "$2" --harness claude --mode no-mistakes --yolo off 2>&1
 }
 
 crew_state() {  # <home> <fakebin> <id>
@@ -134,22 +165,23 @@ crew_state() {  # <home> <fakebin> <id>
 # signal back out of firstmate.
 test_killed_agent_reports_its_signal() {  # <pane-shell-name> <pane-shell-path>
   local shell_name=$1 pane_shell=$2 id="killed-$1"
-  local home proj fakebin out pid state
-  IFS='|' read -r home proj fakebin <<< "$(make_case "$id" "$pane_shell")"
+  local home proj fakebin out pid state armed_state evidence
+  IFS='|' read -r home proj fakebin <<< "$(make_case "$id" "$pane_shell" running)"
   write_brief "$home" "$id"
-  out=$(spawn_agent "$home" "$proj" "$fakebin" "$id" "$AGENT_BIN/fmagent 900") \
+  out=$(spawn_agent "$home" "$proj" "$fakebin" "$id") \
     || fail "$shell_name: spawn failed: $out"
 
   # Armed, and deliberately NOT yet recorded: a running agent must be
   # distinguishable from one that died without saying so.
   poll 30 test -f "$home/state/$id.exit" || fail "$shell_name: exit record was never armed"
-  poll 30 pgrep -f "$AGENT_BIN/fmagent 900" || fail "$shell_name: the agent never started"
+  poll 30 agent_is_running "$fakebin" || fail "$shell_name: the agent never started"
   record_has_exit "$home/state" "$id" \
     && fail "$shell_name: a still-running agent must not carry a recorded exit"
   [ "$("$ROOT/bin/fm-exit-record.sh" show "$home/state" "$id" | cut -f1)" = armed ] \
     || fail "$shell_name: a running agent's record should read armed"
+  armed_state=$(crew_state "$home" "$fakebin" "$id")
 
-  pid=$(pgrep -f "$AGENT_BIN/fmagent 900" | head -1)
+  pid=$(agent_pid "$fakebin")
   [ -n "$pid" ] || fail "$shell_name: could not resolve the agent pid"
   kill -9 "$pid" || fail "$shell_name: kill -9 failed"
 
@@ -180,6 +212,18 @@ test_killed_agent_reports_its_signal() {  # <pane-shell-name> <pane-shell-path>
   case "$state" in
     *"source: none"*) fail "$shell_name: the pre-fix unexplained verdict came back: $state" ;;
   esac
+  if [ -n "$EVIDENCE_DIR" ]; then
+    mkdir -p "$EVIDENCE_DIR"
+    evidence="$EVIDENCE_DIR/exit-capture-$shell_name.txt"
+    {
+      printf 'pane shell: %s\n' "$shell_name"
+      printf 'spawn output: %s\n' "$out"
+      printf 'before kill: %s\n' "$armed_state"
+      printf 'record after kill:\n'
+      cat "$home/state/$id.exit"
+      printf 'after kill: %s\n' "$state"
+    } > "$evidence"
+  fi
   pass "$shell_name pane: a killed agent is reported as failed on signal 9, not unknown"
 }
 
@@ -187,9 +231,9 @@ test_killed_agent_reports_its_signal() {  # <pane-shell-name> <pane-shell-path>
 # failure, and must not be promoted to done either.
 test_clean_agent_exit_is_recorded_as_clean() {
   local id=clean-exit home proj fakebin out state
-  IFS='|' read -r home proj fakebin <<< "$(make_case "$id" "$BASH_BIN")"
+  IFS='|' read -r home proj fakebin <<< "$(make_case "$id" "$BASH_BIN" clean)"
   write_brief "$home" "$id"
-  out=$(spawn_agent "$home" "$proj" "$fakebin" "$id" "$AGENT_BIN/fmquit --now") \
+  out=$(spawn_agent "$home" "$proj" "$fakebin" "$id") \
     || fail "spawn failed: $out"
   poll 30 record_has_exit "$home/state" "$id" \
     || fail "a cleanly exiting agent was never recorded"
@@ -206,6 +250,15 @@ test_clean_agent_exit_is_recorded_as_clean() {
     *"agent exited cleanly"*) ;;
     *) fail "the clean exit should still be visible as detail, got: $state" ;;
   esac
+  if [ -n "$EVIDENCE_DIR" ]; then
+    mkdir -p "$EVIDENCE_DIR"
+    {
+      printf 'spawn output: %s\n' "$out"
+      printf 'record after clean exit:\n'
+      cat "$home/state/$id.exit"
+      printf 'crew state: %s\n' "$state"
+    } > "$EVIDENCE_DIR/exit-capture-clean.txt"
+  fi
   pass "an agent that returns 0 is recorded clean and is neither a failure nor a done"
 }
 

@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 # fm-exit-record.sh - the ONE owner of a launched agent process's exit record.
 #
-# Why this exists: firstmate could tell the captain that a worker stopped, but
-# never why. On 2026-08-10 five concurrently running agents terminated within
-# 0.6s of each other and left no first-party trace at all - no error, no signal,
-# no shutdown record - so the cause could not be established afterwards. Every
-# other lifecycle signal firstmate owns (turn-end markers, the semantic
-# busy-state contract) describes what the agent was DOING; none of them survives
-# the agent's own death. This record is the missing one: what the launched
-# process returned, and what the host looked like when it did.
+# Why this exists: firstmate's other lifecycle signals describe what an agent
+# was doing but do not preserve how its process returned. This record keeps that
+# first-party evidence so a stopped worker does not become an unexplained
+# absence after its own process is gone.
 #
 # Mechanism (deliberately not a poller - firstmate supervision is wake-driven):
 # bin/fm-spawn.sh ARMS the record before launch, then appends this script to the
@@ -47,12 +43,10 @@
 #
 # Host resource snapshot (<prefix>_mem_free_mb, _mem_total_mb, _mem_compressed_mb,
 # _swap_used_mb, _swap_total_mb, _load1): three cheap reads, `unknown` wherever
-# the platform does not supply the figure. It is here because the 2026-08-10
-# incident's only surviving hypothesis was memory pressure and there was no
-# captured figure to test it against - the host was reconstructed by hand hours
-# later. A snapshot at spawn and at exit makes that hypothesis checkable from the
-# record instead of re-argued from scratch. It is CORRELATION, never a cause:
-# nothing in firstmate reads these fields to make a decision.
+# the platform does not supply the figure. A snapshot at spawn and at exit makes
+# later host-pressure hypotheses checkable from first-party evidence. It is
+# CORRELATION, never a cause: nothing in firstmate reads these fields to make a
+# decision.
 #
 # Signal-derivation limit, stated because the record must not overclaim: a POSIX
 # shell reports a foreground command killed by signal N as exit status 128+N,

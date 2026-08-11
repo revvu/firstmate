@@ -20,8 +20,7 @@
 #
 # `failed · exit-record` is the one state that does not describe the WORK: it
 # means the launched agent PROCESS terminated abnormally and firstmate has the
-# recorded status or signal (bin/fm-exit-record.sh). It exists because five
-# agents vanished on 2026-08-10 and every one of them read `unknown · none`.
+# recorded status or signal (bin/fm-exit-record.sh).
 #
 # Logic, in order:
 #   1. Resolve worktree + backend target + kind from state/<id>.meta.
@@ -54,12 +53,12 @@
 #      recorded backend's pane busy state, then the status log's last line only
 #      when its verb maps to a recognized run-state. Decision-only events such as
 #      `resolved` never become current state or detail.
-#   5. Recorded agent exit: a current abnormal exit record becomes failed ·
-#      exit-record, outranking a dead endpoint and the status log alike, because
-#      the log's last line can only describe what the crew was doing before its
-#      process died. It never overrides a run-step verdict or a live agent - it
-#      rides along as detail there instead. An absent, armed-only, or unreadable
-#      record stays UNKNOWN and never reads as a clean exit.
+#   5. Recorded agent exit: an abnormal exit with confirmed dead or missing
+#      agent liveness becomes failed · exit-record, outranking the endpoint and
+#      status log alike. Unverifiable liveness becomes unknown · exit-record;
+#      verified live or newer lifecycle evidence makes the record historical.
+#      A run-step remains authoritative and carries the exit as detail. An
+#      absent, armed-only, unreadable, or clean record never proves success.
 #   6. Missing meta or torn-down worktree: report unknown · none. If no run is
 #      attributed to this crew and no exit was recorded, a dead endpoint also
 #      reports unknown · none rather than trusting a stale status log.
@@ -126,10 +125,9 @@ fi
 # --- recorded agent exit ----------------------------------------------------
 # The one source that survives the agent's own death (bin/fm-exit-record.sh owns
 # the record, its lifecycle states, and the signal-derivation limit). Before it
-# existed, an agent that vanished mid-task reported `state: unknown · source:
-# none` and firstmate could say only that work stopped. A cheap file read, so it
-# runs on every call; `none`, `armed`, and `unreadable` all stay UNKNOWN and are
-# never read as a clean exit.
+# existed, a process disappearance left no first-party termination evidence. A
+# cheap file read, so it runs on every call; `none`, `armed`, and `unreadable`
+# never establish a clean exit.
 EXIT_BIN="$SCRIPT_DIR/fm-exit-record.sh"
 EXIT_DISPOSITION=none
 EXIT_DETAIL=""
