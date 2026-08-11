@@ -1311,12 +1311,14 @@ test_secondmate_spawn_requires_seeded_matching_home() {
 #!/usr/bin/env bash
 exit 0
 SH
+  cp "$ROOT/bin/fm-exit-record.sh" "$fakeroot/bin/fm-exit-record.sh"
   chmod +x "$fakeroot/bin/fm-guard.sh"
   mkdir -p "$ancestor_active_home/data" "$ancestor_active_home/state" "$active_ancestor/data" "$root_ancestor/data" "$root_inside/bin"
   cat > "$root_inside/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
+  cp "$ROOT/bin/fm-exit-record.sh" "$root_inside/bin/fm-exit-record.sh"
   chmod +x "$root_inside/bin/fm-guard.sh"
   fakebin=$(make_fake_tmux "$TMP_ROOT/spawn-validate-fake")
   log="$TMP_ROOT/spawn-validate-fake/tmux.log"
