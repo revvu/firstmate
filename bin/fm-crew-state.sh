@@ -153,6 +153,21 @@ exit_record_is_current() {
   return 0
 }
 
+detail_with_exit() {  # [detail]
+  local detail=${1:-}
+  if [ -n "$EXIT_DETAIL" ]; then
+    if [ -n "$detail" ]; then detail="$detail${SEP}$EXIT_DETAIL"; else detail=$EXIT_DETAIL; fi
+  fi
+  printf '%s' "$detail"
+}
+
+busy_verdict_outranks_exit() {  # <busy verdict>
+  case "${1#* }" in
+    herdr-native|grok-regex) return 0 ;;
+  esac
+  [ "$STATE/$ID.busy-state" -nt "$STATE/$ID.exit" ]
+}
+
 # emit(), except that the recorded exit is never lost: a current abnormal exit
 # becomes the verdict, and any other readable record rides along as extra detail
 # behind the caller's own.
@@ -161,9 +176,7 @@ emit_with_exit() {  # <state> <source> [detail]
   if exit_record_is_current; then
     emit failed exit-record "$EXIT_DETAIL"
   fi
-  if [ -n "$EXIT_DETAIL" ]; then
-    if [ -n "$detail" ]; then detail="$detail${SEP}$EXIT_DETAIL"; else detail=$EXIT_DETAIL; fi
-  fi
+  detail=$(detail_with_exit "$detail")
   emit "$1" "$2" "$detail"
 }
 
@@ -791,7 +804,12 @@ pane_readable "$BACKEND_TARGET" || emit_with_exit unknown none "backend target g
 if [ "$KIND" != secondmate ]; then
   BUSY_VERDICT=$(crew_busy_verdict "$BACKEND_TARGET")
   case "${BUSY_VERDICT%% *}" in
-    busy) emit_with_exit working pane "harness busy (${BUSY_VERDICT#* })" ;;
+    busy)
+      if exit_record_is_current && ! busy_verdict_outranks_exit "$BUSY_VERDICT"; then
+        emit failed exit-record "$EXIT_DETAIL"
+      fi
+      emit working pane "$(detail_with_exit "harness busy (${BUSY_VERDICT#* })")"
+      ;;
     idle) ;;
     *) emit_with_exit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
   esac

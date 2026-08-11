@@ -1593,6 +1593,28 @@ test_live_agent_outranks_a_stale_exit_record() {
   pass "a live agent in the endpoint outranks a stale exit record but keeps it visible"
 }
 
+test_busy_evidence_outranks_a_stale_exit_record() {
+  reset_fakes
+  local d; d=$(new_case exit-stale-busy)
+  make_repo_on_branch "$d/wt" fm/feat-exitstalebusy
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitstalebusy.meta" "window=fm:fm-feat-exitstalebusy" "worktree=$d/wt" "kind=ship" "harness=claude"
+  local gen; gen=$("$ROOT/bin/fm-busy-event.sh" arm "$d/state" feat-exitstalebusy)
+  record_exit "$d/state" feat-exitstalebusy 137
+  FM_FAKE_TMUX_WINDOWS="fm-feat-exitstalebusy"
+  FM_FAKE_TMUX_CURRENT_COMMAND=unverified-agent
+  local out; out=$(run_crew_state "$d" feat-exitstalebusy)
+  assert_contains "$out" "state: failed" "busy evidence predating the exit must not mask the recorded failure"
+  "$ROOT/bin/fm-busy-event.sh" apply "$d/state" feat-exitstalebusy busy --gen "$gen" \
+    --source claude-hook --event user-prompt-submit
+  out=$(run_crew_state "$d" feat-exitstalebusy)
+  assert_contains "$out" "state: working" "positive semantic busy evidence must outrank a historical exit"
+  assert_contains "$out" "source: pane" "the live busy source stays authoritative"
+  assert_not_contains "$out" "source: exit-record" "an unverified recovery classifier must not mask positive busy evidence"
+  assert_contains "$out" "signal 9" "the historical record still rides along as detail"
+  pass "semantic busy evidence outranks a stale exit when recovery liveness is unverified"
+}
+
 test_armed_only_record_stays_unknown() {
   reset_fakes
   local d; d=$(new_case exit-armed)
@@ -1684,6 +1706,7 @@ test_dead_window_ignores_stale_status_log
 test_dead_window_reports_recorded_abnormal_exit
 test_abnormal_exit_outranks_stale_status_log
 test_live_agent_outranks_a_stale_exit_record
+test_busy_evidence_outranks_a_stale_exit_record
 test_armed_only_record_stays_unknown
 test_clean_exit_record_is_not_read_as_done
 test_run_step_keeps_authority_over_the_exit_record

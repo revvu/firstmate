@@ -2157,7 +2157,8 @@ fi
 # unwrapped and record nothing, which reads as unknown - exactly today's
 # behavior - rather than as a clean exit.
 EXIT_CAPTURE=off
-case "${LAUNCH: -1}" in
+LAUNCH_CLASSIFIER=${LAUNCH%"${LAUNCH##*[![:space:]]}"}
+case "${LAUNCH_CLASSIFIER: -1}" in
   '&'|';'|'|')
     echo "warning: launch command ends in a control operator; agent exit capture is off for $ID" >&2
     ;;

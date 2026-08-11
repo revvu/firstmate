@@ -163,11 +163,17 @@ test_corrupt_records_read_unreadable() {
   printf 'v=1\nid=bad-status\nexit_status=notanumber\n' > "$STATE/bad-status.exit"
   [ "$(show_disposition bad-status)" = unreadable ] \
     || fail "a non-numeric exit status must read unreadable"
+  printf 'v=1\nid=bad-clean\nexit_status=1\nexit_disposition=clean\n' > "$STATE/bad-clean.exit"
+  [ "$(show_disposition bad-clean)" = unreadable ] \
+    || fail "a clean disposition on a nonzero status must read unreadable"
+  printf 'v=1\nid=missing-disposition\nexit_status=0\n' > "$STATE/missing-disposition.exit"
+  [ "$(show_disposition missing-disposition)" = unreadable ] \
+    || fail "a recorded status without its disposition must read unreadable"
   : > "$STATE/empty.exit"
   [ "$(show_disposition empty)" = unreadable ] \
     || fail "an empty record must read unreadable"
   local id
-  for id in bad-version bad-status empty; do
+  for id in bad-version bad-status bad-clean missing-disposition empty; do
     show_detail "$id" | grep -qi 'clean' && fail "$id: a corrupt record must never read as clean"
   done
   pass "corrupt records read unreadable and never as a clean exit"

@@ -370,6 +370,30 @@ test_active_dispatch_profile_allows_raw_launch_command() {
   pass "active crew-dispatch profile allows the raw launch-command escape hatch"
 }
 
+test_raw_launch_trailing_control_operator_disables_exit_capture() {
+  local spec label operator rec id raw out status launch
+  for spec in 'amp:&' 'semicolon:;' 'pipe:|'; do
+    label=${spec%%:*}
+    operator=${spec#*:}
+    id="profile-raw-control-$label"
+    rec=$(make_spawn_case "profile-raw-control-$label" claude "$id")
+    read_case_record "$rec"
+    enable_dispatch_profile "$HOME_DIR"
+    raw="custom-agent $operator "
+
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "$raw")
+    status=$?
+    expect_code 0 "$status" "$label raw control-operator launch should preserve prior spawn behavior"
+    assert_contains "$out" "agent exit capture is off" "$label raw launch did not warn that capture was disabled"
+    launch=$(cat "$LAUNCH_LOG")
+    [ "$launch" = "$raw" ] || fail "$label raw control-operator launch changed"$'\n'"actual: $launch"
+    assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "$label raw launch did not record disabled capture"
+    assert_absent "$HOME_DIR/state/$id.exit" "$label raw launch unexpectedly armed an exit record"
+  done
+  pass "raw launches ending in control operators plus whitespace disable exit capture"
+}
+
 test_claude_threads_model_and_effort() {
   local rec id out status launch
   id=profile-claude-z2
@@ -687,6 +711,7 @@ test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
 test_active_dispatch_profile_allows_raw_launch_command
+test_raw_launch_trailing_control_operator_disables_exit_capture
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort

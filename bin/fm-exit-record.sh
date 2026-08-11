@@ -286,7 +286,7 @@ pressure_clause() {  # <file> <prefix>
 }
 
 cmd_show() {  # <state-dir> <id>
-  local state=$1 id=$2 path v status disposition signal name utc armed_utc detail pressure
+  local state=$1 id=$2 path v status disposition expected_disposition signal name utc armed_utc detail pressure
   path=$(record_path "$state" "$id")
   if [ ! -f "$path" ]; then
     printf 'none\t\n'
@@ -318,6 +318,19 @@ cmd_show() {  # <state-dir> <id>
       return 0
       ;;
   esac
+  if [ "$status" = 0 ]; then expected_disposition=clean; else expected_disposition=abnormal; fi
+  case "$disposition" in
+    clean|abnormal) ;;
+    *)
+      printf 'unreadable\tagent exit record unreadable (exit disposition %s)\n' "${disposition:-missing}"
+      return 0
+      ;;
+  esac
+  if [ "$disposition" != "$expected_disposition" ]; then
+    printf 'unreadable\tagent exit record unreadable (exit disposition conflicts with status %s)\n' "$status"
+    return 0
+  fi
+  disposition=$expected_disposition
   if [ "$disposition" = clean ]; then
     detail="agent exited cleanly (status 0)"
   else
