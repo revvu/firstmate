@@ -2169,6 +2169,10 @@ fi
 # reads as unknown rather than as a clean exit.
 EXIT_CAPTURE=off
 if [ "$RAW_LAUNCH" -eq 1 ]; then
+  if ! "$FM_ROOT/bin/fm-exit-record.sh" retire "$STATE_REAL" "$ID"; then
+    echo "error: prior agent exit record could not be retired for raw launch $ID" >&2
+    exit 1
+  fi
   echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
 elif "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
   EXIT_CAPTURE=on
