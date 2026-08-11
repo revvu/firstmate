@@ -350,71 +350,39 @@ test_active_dispatch_profile_allows_positional_harness() {
   pass "active crew-dispatch profile allows the legacy positional harness form"
 }
 
-test_active_dispatch_profile_allows_raw_launch_command() {
-  local rec id out status launch launch_kind
-  id=profile-raw-z15
-  rec=$(make_spawn_case profile-raw claude "$id")
-  read_case_record "$rec"
-  enable_dispatch_profile "$HOME_DIR"
-
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-    "$id" "$PROJ_DIR" "custom-agent --flag")
-  status=$?
-  expect_code 0 "$status" "raw launch command should satisfy active dispatch-profile requirement"
-  assert_contains "$out" "spawned $id harness=custom-agent" "spawn did not report raw command harness"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
-  launch=$(cat "$LAUNCH_LOG")
-  launch_kind=$(fm_launch_kind "$launch") \
-    || fail "the raw launch line carried no agent exit recorder"$'\n'"actual: $launch"
-  [ "$launch_kind" = "custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch_kind"
-  pass "active crew-dispatch profile allows the raw launch-command escape hatch"
-}
-
-test_raw_launch_trailing_control_operator_disables_exit_capture() {
-  local spec label operator rec id raw out status launch
-  for spec in 'amp:&' 'semicolon:;' 'pipe:|'; do
-    label=${spec%%:*}
-    operator=${spec#*:}
-    id="profile-raw-control-$label"
-    rec=$(make_spawn_case "profile-raw-control-$label" claude "$id")
-    read_case_record "$rec"
-    enable_dispatch_profile "$HOME_DIR"
-    raw="custom-agent $operator "
-
-    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-      "$id" "$PROJ_DIR" "$raw")
-    status=$?
-    expect_code 0 "$status" "$label raw control-operator launch should preserve prior spawn behavior"
-    assert_contains "$out" "agent exit capture is off" "$label raw launch did not warn that capture was disabled"
-    launch=$(cat "$LAUNCH_LOG")
-    [ "$launch" = "$raw" ] || fail "$label raw control-operator launch changed"$'\n'"actual: $launch"
-    assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "$label raw launch did not record disabled capture"
-    assert_absent "$HOME_DIR/state/$id.exit" "$label raw launch unexpectedly armed an exit record"
-  done
-  pass "raw launches ending in control operators plus whitespace disable exit capture"
-}
-
-test_raw_launch_compound_forms_disable_exit_capture() {
+test_raw_launch_always_disables_exit_capture() {
   local spec label raw rec id out status launch
-  for spec in 'pipeline:custom-agent | tee log' 'exec:exec custom-agent'; do
+  for spec in \
+    'plain:custom-agent --flag' \
+    'pipeline:custom-agent | tee log' \
+    'exec:exec custom-agent' \
+    'negation:! custom-agent' \
+    'amp:custom-agent & ' \
+    'semicolon:custom-agent ; ' \
+    'pipe:custom-agent | '
+  do
     label=${spec%%:*}
     raw=${spec#*:}
-    id="profile-raw-compound-$label"
-    rec=$(make_spawn_case "profile-raw-compound-$label" claude "$id")
+    id="profile-raw-$label"
+    rec=$(make_spawn_case "profile-raw-$label" claude "$id")
     read_case_record "$rec"
     enable_dispatch_profile "$HOME_DIR"
 
     out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
       "$id" "$PROJ_DIR" "$raw")
     status=$?
-    expect_code 0 "$status" "$label raw launch should preserve prior spawn behavior"
+    expect_code 0 "$status" "$label raw launch should satisfy the active dispatch profile"
     assert_contains "$out" "agent exit capture is off" "$label raw launch did not warn that capture was disabled"
     launch=$(cat "$LAUNCH_LOG")
     [ "$launch" = "$raw" ] || fail "$label raw launch changed"$'\n'"actual: $launch"
     assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "$label raw launch did not record disabled capture"
     assert_absent "$HOME_DIR/state/$id.exit" "$label raw launch unexpectedly armed an exit record"
+    if [ "$label" = plain ]; then
+      assert_contains "$out" "spawned $id harness=custom-agent" "plain raw launch did not report its harness"
+      assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
+    fi
   done
-  pass "raw pipeline and exec launches disable exit capture"
+  pass "all raw launch commands disable exit capture"
 }
 
 test_claude_threads_model_and_effort() {
@@ -733,9 +701,7 @@ test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
-test_active_dispatch_profile_allows_raw_launch_command
-test_raw_launch_trailing_control_operator_disables_exit_capture
-test_raw_launch_compound_forms_disable_exit_capture
+test_raw_launch_always_disables_exit_capture
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort

@@ -2153,24 +2153,12 @@ fi
 # `|| true` so an instrumentation failure can never change what the pane shows
 # or leave a nonzero status behind the agent.
 #
-# A raw launch command (the unverified-adapter escape hatch) ending in a control
-# operator cannot carry the append: `cmd & ; recorder` is a syntax error, and a
-# backgrounded agent's `$?` is not the agent's status anyway. Those spawns run
-# unwrapped and record nothing, which reads as unknown - exactly today's
-# behavior - rather than as a clean exit.
+# A raw launch command is unverified shell text, so its status cannot be safely
+# attributed to the agent. Those spawns run unwrapped and record nothing, which
+# reads as unknown rather than as a clean exit.
 EXIT_CAPTURE=off
-LAUNCH_CLASSIFIER=${LAUNCH%"${LAUNCH##*[![:space:]]}"}
-EXIT_CAPTURE_UNSUPPORTED=
 if [ "$RAW_LAUNCH" -eq 1 ]; then
-  case "$LAUNCH_CLASSIFIER" in
-    *'&'*|*';'*|*'|'*) EXIT_CAPTURE_UNSUPPORTED='uses a control operator' ;;
-  esac
-  if [ -z "$EXIT_CAPTURE_UNSUPPORTED" ] && [[ $LAUNCH_CLASSIFIER =~ ^[[:space:]]*exec[[:space:]] ]]; then
-    EXIT_CAPTURE_UNSUPPORTED='uses exec'
-  fi
-fi
-if [ -n "$EXIT_CAPTURE_UNSUPPORTED" ]; then
-  echo "warning: raw launch command $EXIT_CAPTURE_UNSUPPORTED; agent exit capture is off for $ID" >&2
+  echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
 elif "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
   EXIT_CAPTURE=on
   LAUNCH="$LAUNCH; $(shell_quote "$FM_ROOT/bin/fm-exit-record.sh") record $(shell_quote "$STATE_REAL") $(shell_quote "$ID") \"\$?\" >/dev/null 2>&1 || true"
