@@ -40,6 +40,7 @@ Each verified-adapter spawn also attempts to arm `state/<id>.exit` and appends i
 Raw launch commands run without capture because their shell status cannot be attributed safely, and `exit_capture=off` records any launch that proceeds without attributable capture.
 When the endpoint is dead or missing, a current abnormal record reports `failed` from `exit-record`; a backend with unverifiable agent liveness reports `unknown` while retaining the exit detail, and a verified live agent or newer lifecycle evidence makes the record historical.
 A matching run-step remains authoritative, a clean exit never establishes completed work, and an absent, armed-only, or unreadable record never establishes success.
+Stale-record safety depends on both `fm-spawn` retiring the prior record and `fm-crew-state.sh` giving verified liveness or newer lifecycle evidence precedence: a resume typed directly into an existing pane bypasses retirement and remains `unknown` when the successor's liveness cannot be verified.
 `bin/fm-exit-record.sh` owns the exact record lifecycle, signal-derivation limit, and correlation-only host snapshots, while [`verification/supervision.md`](verification/supervision.md#agent-exit-capture) records the live tmux evidence.
 Decision-only events such as `resolved` never become current state or leak their prose into the current-state detail.
 In that status-log fallback, a declared external wait reports the distinct `paused` state with its reason.
