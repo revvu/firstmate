@@ -307,3 +307,57 @@ UNVERIFIED against a live binary: the `quiet ` prefix that no-mistakes adds to `
 No observed run crossed that threshold during the capture window, and forcing it would have required mutating another lane's repository or the shared configuration.
 The reader detects it defensively as a leading `quiet` token and only annotates the line with it; a quiet step never changes the reported state.
 Confirm it against a live quiet step at the next opportunity.
+
+## Agent exit capture
+
+This record supports the guarantee that a launched agent's disappearance is self-explaining: `bin/fm-crew-state.sh` reports a recorded abnormal exit with its derived signal instead of `state: unknown · source: none`.
+
+The capture is appended to the launch line by `bin/fm-spawn.sh`, so it is the pane shell's own `$?` and is delivered by whatever text-send path the selected runtime backend uses.
+It is therefore backend-independent by construction rather than per-adapter, and tmux is where it is proven live; herdr, zellij, orca, and cmux inherit the same mechanism through the shared launch-line delivery.
+The one deliberate gap is a raw launch command ending in `&`, `;`, or `|`, which cannot carry the record; that spawn records `exit_capture=off` in the task's metadata and degrades to the previous behavior rather than reporting a false exit.
+
+Captured on 2026-08-10 (the record's UTC stamps read 2026-08-11) with tmux 3.7b, bash 5.3.9, zsh 5.9.1, on macOS 26.5.2 arm64.
+A real agent process was spawned through `bin/fm-spawn.sh` into a real tmux pane on a private socket and killed with `kill -9`.
+
+```sh
+kill -9 "$(pgrep -f "$AGENT_BIN/fmagent 900" | head -1)"
+cat state/demo.exit
+bin/fm-crew-state.sh demo
+```
+
+Observed record, abridged to the exit half (the armed half carries the same fields under an `armed_` prefix):
+
+```
+exit_status=137
+exit_at=1786406602
+exit_utc=2026-08-11T00:03:22Z
+exit_signal=9
+exit_signal_name=KILL
+exit_signal_basis=exit-status-convention
+exit_disposition=abnormal
+exit_mem_free_mb=58
+exit_mem_total_mb=16384
+exit_mem_compressed_mb=5111
+exit_swap_used_mb=13673
+exit_swap_total_mb=14336
+exit_load1=3.27
+```
+
+Observed `bin/fm-crew-state.sh` reads, before and after the kill:
+
+```
+state: unknown · source: pane · harness state unavailable (unknown missing) · agent exit not recorded (exit capture armed 2026-08-11T00:03:21Z)
+state: failed · source: exit-record · agent exited on signal 9 (SIGKILL), from status 137 at 2026-08-11T00:03:22Z; host at exit: 58MB free, 13673MB swap used, load 3.27
+```
+
+The signal number is derived from the shell's 128+N convention, which cannot be distinguished from a program that deliberately exited 128+N; `exit_signal_basis` names that derivation so the reader never presents it as a kernel-reported signal.
+The host snapshots are correlation material for a later diagnosis and nothing reads them to decide a state.
+
+Current entry points:
+
+```sh
+tests/fm-exit-record.test.sh
+tests/fm-exit-capture-e2e.test.sh
+```
+
+`tests/fm-exit-capture-e2e.test.sh` runs the scenario once per pane shell it finds (bash always, zsh when installed) and skips with a message when tmux is absent.

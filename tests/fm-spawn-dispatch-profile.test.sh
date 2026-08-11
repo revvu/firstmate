@@ -117,7 +117,7 @@ assert_meta_profile() {
 }
 
 test_no_profile_keeps_claude_profile_defaults() {
-  local rec id out status expected launch
+  local rec id out status expected launch launch_kind
   id=profile-off-z1
   rec=$(make_spawn_case profile-off claude "$id")
   read_case_record "$rec"
@@ -129,8 +129,10 @@ test_no_profile_keeps_claude_profile_defaults() {
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
 
   launch=$(cat "$LAUNCH_LOG")
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the claude launch line carried no agent exit recorder"$'\n'"actual:   $launch"
   expected="CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false claude --dangerously-skip-permissions \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/brief.md')\""
-  [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch_kind"
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
@@ -349,7 +351,7 @@ test_active_dispatch_profile_allows_positional_harness() {
 }
 
 test_active_dispatch_profile_allows_raw_launch_command() {
-  local rec id out status launch
+  local rec id out status launch launch_kind
   id=profile-raw-z15
   rec=$(make_spawn_case profile-raw claude "$id")
   read_case_record "$rec"
@@ -362,7 +364,9 @@ test_active_dispatch_profile_allows_raw_launch_command() {
   assert_contains "$out" "spawned $id harness=custom-agent" "spawn did not report raw command harness"
   assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
   launch=$(cat "$LAUNCH_LOG")
-  [ "$launch" = "custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the raw launch line carried no agent exit recorder"$'\n'"actual: $launch"
+  [ "$launch_kind" = "custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch_kind"
   pass "active crew-dispatch profile allows the raw launch-command escape hatch"
 }
 
