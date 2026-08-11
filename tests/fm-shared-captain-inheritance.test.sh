@@ -233,7 +233,6 @@ new_git_world() {
   } > "$root/.gitignore"
   printf '%s\n' "instructions" > "$root/AGENTS.md"
   mkdir -p "$root/bin" "$root/.agents/skills"
-  cp "$ROOT/bin/fm-exit-record.sh" "$root/bin/fm-exit-record.sh"
   printf '%s\n' "echo spawn" > "$root/bin/fm-spawn.sh"
   printf '%s\n' "skill" > "$root/.agents/skills/example.md"
   git -C "$root" add -A

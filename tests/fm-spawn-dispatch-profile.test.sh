@@ -435,7 +435,9 @@ test_composed_to_raw_respawn_retires_prior_exit_record() {
       "$id" "$PROJ_DIR" "custom-agent --flag")
   status=$?
   expect_code 0 "$status" "raw same-id respawn should succeed"
-  [ "$(cat "$calls")" = retire ] || fail "raw respawn did not retire exactly once before capture selection"
+  # Retirement is a direct unlink, so there is no helper call to observe. The
+  # absent record IS the guarantee: a raw respawn leaves nothing behind for
+  # fm-crew-state.sh to attribute to the new incarnation.
   assert_absent "$HOME_DIR/state/$id.exit" "raw same-id respawn retained the prior exit record"
   assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "raw same-id respawn did not disable capture"
   state=$(
@@ -452,7 +454,7 @@ test_composed_to_raw_respawn_retires_prior_exit_record() {
 }
 
 test_raw_to_composed_respawn_retires_before_arming() {
-  local rec id out status proxy calls expected
+  local rec id out status proxy calls
   id=profile-composed-respawn
   rec=$(make_spawn_case profile-composed-respawn claude "$id")
   read_case_record "$rec"
@@ -474,9 +476,9 @@ test_raw_to_composed_respawn_retires_before_arming() {
       "$id" "$PROJ_DIR" --harness claude)
   status=$?
   expect_code 0 "$status" "composed same-id respawn should succeed"
-  expected=$'retire\narm'
-  [ "$(cat "$calls")" = "$expected" ] \
-    || fail "composed respawn did not retire exactly once before arming"
+  # These two asserts carry the ordering guarantee the old call-log spy encoded:
+  # a fresh armed record still present proves retirement ran BEFORE arming, since
+  # retiring afterwards would have deleted it.
   assert_grep 'armed_at=' "$HOME_DIR/state/$id.exit" "composed respawn did not arm a new exit record"
   assert_not_contains "$(cat "$HOME_DIR/state/$id.exit")" 'exit_signal=9' \
     "composed respawn retained the prior signal"
@@ -484,7 +486,7 @@ test_raw_to_composed_respawn_retires_before_arming() {
 }
 
 test_composed_respawn_arm_failure_leaves_no_stale_record() {
-  local rec id out status proxy calls expected state
+  local rec id out status proxy calls state
   id=profile-composed-arm-failure
   rec=$(make_spawn_case profile-composed-arm-failure claude "$id")
   read_case_record "$rec"
@@ -507,9 +509,8 @@ test_composed_respawn_arm_failure_leaves_no_stale_record() {
       "$id" "$PROJ_DIR" --harness claude)
   status=$?
   expect_code 0 "$status" "composed respawn should degrade when arming fails"
-  expected=$'retire\narm'
-  [ "$(cat "$calls")" = "$expected" ] \
-    || fail "arm-failure respawn did not retire exactly once before arming"
+  # A failed arm cannot mask a missed retirement here: the prior record must be
+  # gone even though nothing new was armed over it.
   assert_contains "$out" "could not be armed" "arm failure did not warn"
   assert_absent "$HOME_DIR/state/$id.exit" "arm-failure respawn retained the prior exit record"
   assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "arm-failure respawn did not disable capture"

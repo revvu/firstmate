@@ -55,7 +55,6 @@ new_world() {
   printf 'v1\n' > "$w/main/AGENTS.md"
   printf 'r1\n' > "$w/main/README.md"
   mkdir -p "$w/main/bin" "$w/main/.agents/skills"
-  cp "$ROOT/bin/fm-exit-record.sh" "$w/main/bin/fm-exit-record.sh"
   printf 'echo a\n' > "$w/main/bin/tool.sh"
   printf 's1\n' > "$w/main/.agents/skills/note.md"
   git -C "$w/main" add -A

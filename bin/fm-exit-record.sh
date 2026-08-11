@@ -25,8 +25,13 @@
 # An ABSENT record, an armed-only record, and an unreadable record all read as
 # UNKNOWN. None of them ever reads as a clean exit: inferring success from
 # absent evidence is the exact failure this record exists to remove.
-# Before starting any new agent incarnation, fm-spawn calls `retire` exactly
-# once so evidence keyed by the task id cannot be attributed to its successor.
+# Before starting any new agent incarnation, fm-spawn removes any existing record
+# so evidence keyed by the task id cannot be attributed to its successor. It does
+# that with a direct unlink rather than by calling this script, deliberately: the
+# `arm` path has always tolerated this helper being absent, and retirement must
+# not be the one thing that turns instrumentation into a hard prerequisite for
+# spawning at all. `retire` below performs the same removal for any caller that
+# does have this script, and refuses only when a record exists and will not go.
 #
 # Fields:
 #   v=1                     record format version

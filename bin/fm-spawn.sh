@@ -800,7 +800,14 @@ if ! fm_lock_try_acquire "$SPAWN_TASK_LOCK"; then
   exit 1
 fi
 SPAWN_TASK_LOCK_HELD=1
-if ! "$FM_ROOT/bin/fm-exit-record.sh" retire "$STATE" "$ID"; then
+# Retiring the previous incarnation's exit record is a direct unlink, not a call
+# out to bin/fm-exit-record.sh: retirement must not become a hard prerequisite for
+# spawning. `arm` below has always tolerated that helper being absent, and the
+# same tolerance belongs here. `rm -f` succeeds when there is no record, so an
+# absent helper or an absent record can never block a launch. A record that
+# EXISTS and will not go is the real hazard - a new incarnation running under the
+# previous one's recorded signal - so that still refuses the spawn.
+if ! rm -f -- "$STATE/$ID.exit"; then
   echo "error: prior agent exit record could not be retired for spawn $ID" >&2
   exit 1
 fi
