@@ -169,11 +169,23 @@ test_corrupt_records_read_unreadable() {
   printf 'v=1\nid=missing-disposition\nexit_status=0\n' > "$STATE/missing-disposition.exit"
   [ "$(show_disposition missing-disposition)" = unreadable ] \
     || fail "a recorded status without its disposition must read unreadable"
+  printf 'v=1\nid=false-signal\nexit_status=1\nexit_disposition=abnormal\nexit_signal=9\nexit_signal_name=KILL\nexit_signal_basis=exit-status-convention\n' > "$STATE/false-signal.exit"
+  [ "$(show_disposition false-signal)" = unreadable ] \
+    || fail "a signal tuple inconsistent with the status must read unreadable"
+  printf 'v=1\nid=missing-signal\nexit_status=137\nexit_disposition=abnormal\nexit_signal=none\nexit_signal_name=none\nexit_signal_basis=none\n' > "$STATE/missing-signal.exit"
+  [ "$(show_disposition missing-signal)" = unreadable ] \
+    || fail "a missing derived signal tuple must read unreadable"
+  printf 'v=1\nid=wrong-basis\nexit_status=137\nexit_disposition=abnormal\nexit_signal=9\nexit_signal_name=KILL\nexit_signal_basis=none\n' > "$STATE/wrong-basis.exit"
+  [ "$(show_disposition wrong-basis)" = unreadable ] \
+    || fail "an inconsistent signal basis must read unreadable"
+  printf 'v=1\nid=wrong-name\nexit_status=137\nexit_disposition=abnormal\nexit_signal=9\nexit_signal_name=TERM\nexit_signal_basis=exit-status-convention\n' > "$STATE/wrong-name.exit"
+  [ "$(show_disposition wrong-name)" = unreadable ] \
+    || fail "an inconsistent signal name must read unreadable"
   : > "$STATE/empty.exit"
   [ "$(show_disposition empty)" = unreadable ] \
     || fail "an empty record must read unreadable"
   local id
-  for id in bad-version bad-status bad-clean missing-disposition empty; do
+  for id in bad-version bad-status bad-clean missing-disposition false-signal missing-signal wrong-basis wrong-name empty; do
     show_detail "$id" | grep -qi 'clean' && fail "$id: a corrupt record must never read as clean"
   done
   pass "corrupt records read unreadable and never as a clean exit"

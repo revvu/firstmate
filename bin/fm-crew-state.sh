@@ -139,18 +139,25 @@ if [ -x "$EXIT_BIN" ]; then
   [ -n "$EXIT_DISPOSITION" ] || EXIT_DISPOSITION=none
 fi
 
-# A recorded abnormal exit describes the incarnation that spawn armed. It is the
-# current answer only while no agent is running in that endpoint again: a resume
-# typed straight into the pane (rather than a respawn, which re-arms) would leave
-# the previous incarnation's record standing, so a live agent always outranks a
-# historical record. Callers still surface the record as detail in that case.
-exit_record_is_current() {
-  [ "$EXIT_DISPOSITION" = recorded-abnormal ] || return 1
-  [ -n "${BACKEND_TARGET:-}" ] || return 0
-  case "$(fm_backend_agent_alive "$TASK_BACKEND" "$BACKEND_TARGET" 2>/dev/null || true)" in
-    alive) return 1 ;;
+# A recorded abnormal exit describes the incarnation that spawn armed. A
+# verified live agent or a newer semantic lifecycle event makes it historical.
+# A backend that cannot distinguish a live agent from its surviving endpoint
+# stays unknown while preserving the exit evidence instead of claiming either.
+exit_record_relation() {
+  local agent_state
+  [ "$EXIT_DISPOSITION" = recorded-abnormal ] || { printf 'historical'; return 0; }
+  [ -n "${BACKEND_TARGET:-}" ] || { printf 'current'; return 0; }
+  agent_state=$(fm_backend_agent_state "$TASK_BACKEND" "$BACKEND_TARGET" 2>/dev/null || true)
+  case "$agent_state" in
+    alive) printf 'historical'; return 0 ;;
+    dead|missing) printf 'current'; return 0 ;;
   esac
-  return 0
+  if [ "$STATE/$ID.busy-state" -nt "$STATE/$ID.exit" ] \
+     || [ "$STATE/$ID.turn-ended" -nt "$STATE/$ID.exit" ]; then
+    printf 'historical'
+  else
+    printf 'ambiguous'
+  fi
 }
 
 detail_with_exit() {  # [detail]
@@ -161,11 +168,11 @@ detail_with_exit() {  # [detail]
   printf '%s' "$detail"
 }
 
-busy_verdict_outranks_exit() {  # <busy verdict>
-  case "${1#* }" in
-    herdr-native|grok-regex) return 0 ;;
+emit_exit_if_authoritative() {
+  case "$(exit_record_relation)" in
+    current) emit failed exit-record "$EXIT_DETAIL" ;;
+    ambiguous) emit unknown exit-record "$EXIT_DETAIL${SEP}current agent liveness unverified" ;;
   esac
-  [ "$STATE/$ID.busy-state" -nt "$STATE/$ID.exit" ]
 }
 
 # emit(), except that the recorded exit is never lost: a current abnormal exit
@@ -173,9 +180,7 @@ busy_verdict_outranks_exit() {  # <busy verdict>
 # behind the caller's own.
 emit_with_exit() {  # <state> <source> [detail]
   local detail=${3:-}
-  if exit_record_is_current; then
-    emit failed exit-record "$EXIT_DETAIL"
-  fi
+  emit_exit_if_authoritative
   detail=$(detail_with_exit "$detail")
   emit "$1" "$2" "$detail"
 }
@@ -804,12 +809,7 @@ pane_readable "$BACKEND_TARGET" || emit_with_exit unknown none "backend target g
 if [ "$KIND" != secondmate ]; then
   BUSY_VERDICT=$(crew_busy_verdict "$BACKEND_TARGET")
   case "${BUSY_VERDICT%% *}" in
-    busy)
-      if exit_record_is_current && ! busy_verdict_outranks_exit "$BUSY_VERDICT"; then
-        emit failed exit-record "$EXIT_DETAIL"
-      fi
-      emit working pane "$(detail_with_exit "harness busy (${BUSY_VERDICT#* })")"
-      ;;
+    busy) emit_with_exit working pane "harness busy (${BUSY_VERDICT#* })" ;;
     idle) ;;
     *) emit_with_exit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
   esac
@@ -818,9 +818,7 @@ fi
 # A recorded abnormal exit outranks the status log: the log's last line is an
 # event the crew appended while it was still alive, so it can only ever describe
 # what the crew was doing BEFORE the process died.
-if exit_record_is_current; then
-  emit failed exit-record "$EXIT_DETAIL"
-fi
+emit_exit_if_authoritative
 
 # Fall back to the status log's last line, but ONLY when its verb maps to a real
 # run-state. A decision-closing event - resolved: (fm-classify-lib.sh's

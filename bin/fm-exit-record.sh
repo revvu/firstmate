@@ -286,7 +286,8 @@ pressure_clause() {  # <file> <prefix>
 }
 
 cmd_show() {  # <state-dir> <id>
-  local state=$1 id=$2 path v status disposition expected_disposition signal name utc armed_utc detail pressure
+  local state=$1 id=$2 path v status disposition expected_disposition signal expected_signal name expected_name basis expected_basis
+  local utc armed_utc detail pressure
   path=$(record_path "$state" "$id")
   if [ ! -f "$path" ]; then
     printf 'none\t\n'
@@ -311,14 +312,19 @@ cmd_show() {  # <state-dir> <id>
   disposition=$(field "$path" exit_disposition)
   signal=$(field "$path" exit_signal)
   name=$(field "$path" exit_signal_name)
+  basis=$(field "$path" exit_signal_basis)
   utc=$(field "$path" exit_utc)
   case "$status" in
-    ''|*[!0-9]*)
+    ''|*[!0-9]*|????*)
       printf 'unreadable\tagent exit record unreadable (exit status %s)\n' "${status:-missing}"
       return 0
       ;;
   esac
-  if [ "$status" = 0 ]; then expected_disposition=clean; else expected_disposition=abnormal; fi
+  if [ "$status" -gt 255 ]; then
+    printf 'unreadable\tagent exit record unreadable (exit status %s)\n' "$status"
+    return 0
+  fi
+  if [ "$status" -eq 0 ]; then expected_disposition=clean; else expected_disposition=abnormal; fi
   case "$disposition" in
     clean|abnormal) ;;
     *)
@@ -331,6 +337,22 @@ cmd_show() {  # <state-dir> <id>
     return 0
   fi
   disposition=$expected_disposition
+  expected_signal=$(signal_of_status "$status")
+  if [ -n "$expected_signal" ]; then
+    expected_name=$(signal_name_of "$expected_signal")
+    [ -n "$expected_name" ] || expected_name=unknown
+    expected_basis=exit-status-convention
+  else
+    expected_signal=none
+    expected_name=none
+    expected_basis=none
+  fi
+  if [ "$signal" != "$expected_signal" ] || [ "$name" != "$expected_name" ] || [ "$basis" != "$expected_basis" ]; then
+    printf 'unreadable\tagent exit record unreadable (derived termination fields conflict with status %s)\n' "$status"
+    return 0
+  fi
+  signal=$expected_signal
+  name=$expected_name
   if [ "$disposition" = clean ]; then
     detail="agent exited cleanly (status 0)"
   else

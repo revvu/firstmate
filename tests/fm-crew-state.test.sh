@@ -1604,7 +1604,8 @@ test_busy_evidence_outranks_a_stale_exit_record() {
   FM_FAKE_TMUX_WINDOWS="fm-feat-exitstalebusy"
   FM_FAKE_TMUX_CURRENT_COMMAND=unverified-agent
   local out; out=$(run_crew_state "$d" feat-exitstalebusy)
-  assert_contains "$out" "state: failed" "busy evidence predating the exit must not mask the recorded failure"
+  assert_contains "$out" "state: unknown" "ambiguous agent liveness must not become a false failure"
+  assert_contains "$out" "source: exit-record" "the ambiguous verdict must preserve the recorded exit evidence"
   "$ROOT/bin/fm-busy-event.sh" apply "$d/state" feat-exitstalebusy busy --gen "$gen" \
     --source claude-hook --event user-prompt-submit
   out=$(run_crew_state "$d" feat-exitstalebusy)
@@ -1613,6 +1614,39 @@ test_busy_evidence_outranks_a_stale_exit_record() {
   assert_not_contains "$out" "source: exit-record" "an unverified recovery classifier must not mask positive busy evidence"
   assert_contains "$out" "signal 9" "the historical record still rides along as detail"
   pass "semantic busy evidence outranks a stale exit when recovery liveness is unverified"
+}
+
+test_stale_grok_render_does_not_mask_a_recorded_exit() {
+  reset_fakes
+  local d; d=$(new_case exit-stale-grok)
+  make_repo_on_branch "$d/wt" fm/feat-exitstalegrok
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitstalegrok.meta" "window=fm:fm-feat-exitstalegrok" "worktree=$d/wt" "kind=ship" "harness=grok"
+  record_exit "$d/state" feat-exitstalegrok 137
+  FM_FAKE_TMUX_WINDOWS="fm-feat-exitstalegrok"
+  FM_FAKE_TMUX_CURRENT_COMMAND=bash
+  FM_FAKE_BUSY=1
+  FM_FAKE_BUSY_TEXT=Ctrl+c:cancel
+  local out; out=$(run_crew_state "$d" feat-exitstalegrok)
+  assert_contains "$out" "state: failed" "a stale Grok footer must not mask the recorded failure"
+  assert_contains "$out" "source: exit-record" "the recorded exit remains authoritative over rendered text"
+  pass "a stale Grok busy footer cannot mask a recorded abnormal exit"
+}
+
+test_unverified_secondmate_liveness_preserves_exit_without_false_failure() {
+  reset_fakes
+  local d; d=$(new_case exit-secondmate-unverified)
+  make_repo_on_branch "$d/wt" fm/feat-exitsmunverified
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "harness=codex"
+  record_exit "$d/state" mate 137
+  FM_FAKE_TMUX_WINDOWS=fm-mate
+  FM_FAKE_TMUX_CURRENT_COMMAND=unverified-agent
+  local out; out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "unverified secondmate liveness must not become a false failure"
+  assert_contains "$out" "source: exit-record" "the secondmate verdict must preserve the recorded exit"
+  assert_contains "$out" "signal 9" "the ambiguous verdict must retain the recorded signal"
+  pass "unverified secondmate liveness preserves exit evidence without claiming failure"
 }
 
 test_armed_only_record_stays_unknown() {
@@ -1707,6 +1741,8 @@ test_dead_window_reports_recorded_abnormal_exit
 test_abnormal_exit_outranks_stale_status_log
 test_live_agent_outranks_a_stale_exit_record
 test_busy_evidence_outranks_a_stale_exit_record
+test_stale_grok_render_does_not_mask_a_recorded_exit
+test_unverified_secondmate_liveness_preserves_exit_without_false_failure
 test_armed_only_record_stays_unknown
 test_clean_exit_record_is_not_read_as_done
 test_run_step_keeps_authority_over_the_exit_record
