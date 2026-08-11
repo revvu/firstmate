@@ -876,8 +876,10 @@ launch_template() {
   esac
 }
 
+RAW_LAUNCH=0
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
+    RAW_LAUNCH=1
     LAUNCH=$ARG3
     HARNESS=""
     for word in $LAUNCH; do
@@ -2158,19 +2160,23 @@ fi
 # behavior - rather than as a clean exit.
 EXIT_CAPTURE=off
 LAUNCH_CLASSIFIER=${LAUNCH%"${LAUNCH##*[![:space:]]}"}
-case "${LAUNCH_CLASSIFIER: -1}" in
-  '&'|';'|'|')
-    echo "warning: launch command ends in a control operator; agent exit capture is off for $ID" >&2
-    ;;
-  *)
-    if "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
-      EXIT_CAPTURE=on
-      LAUNCH="$LAUNCH; $(shell_quote "$FM_ROOT/bin/fm-exit-record.sh") record $(shell_quote "$STATE_REAL") $(shell_quote "$ID") \"\$?\" >/dev/null 2>&1 || true"
-    else
-      echo "warning: agent exit capture could not be armed for $ID" >&2
-    fi
-    ;;
-esac
+EXIT_CAPTURE_UNSUPPORTED=
+if [ "$RAW_LAUNCH" -eq 1 ]; then
+  case "$LAUNCH_CLASSIFIER" in
+    *'&'*|*';'*|*'|'*) EXIT_CAPTURE_UNSUPPORTED='uses a control operator' ;;
+  esac
+  if [ -z "$EXIT_CAPTURE_UNSUPPORTED" ] && [[ $LAUNCH_CLASSIFIER =~ ^[[:space:]]*exec[[:space:]] ]]; then
+    EXIT_CAPTURE_UNSUPPORTED='uses exec'
+  fi
+fi
+if [ -n "$EXIT_CAPTURE_UNSUPPORTED" ]; then
+  echo "warning: raw launch command $EXIT_CAPTURE_UNSUPPORTED; agent exit capture is off for $ID" >&2
+elif "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
+  EXIT_CAPTURE=on
+  LAUNCH="$LAUNCH; $(shell_quote "$FM_ROOT/bin/fm-exit-record.sh") record $(shell_quote "$STATE_REAL") $(shell_quote "$ID") \"\$?\" >/dev/null 2>&1 || true"
+else
+  echo "warning: agent exit capture could not be armed for $ID" >&2
+fi
 # Only the OFF case is recorded, so an ordinary task's meta stays byte-identical
 # (the same convention backend= and traceparent= follow). An absent record plus
 # no exit_capture= line means the task predates exit capture; an absent record

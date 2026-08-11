@@ -394,6 +394,29 @@ test_raw_launch_trailing_control_operator_disables_exit_capture() {
   pass "raw launches ending in control operators plus whitespace disable exit capture"
 }
 
+test_raw_launch_compound_forms_disable_exit_capture() {
+  local spec label raw rec id out status launch
+  for spec in 'pipeline:custom-agent | tee log' 'exec:exec custom-agent'; do
+    label=${spec%%:*}
+    raw=${spec#*:}
+    id="profile-raw-compound-$label"
+    rec=$(make_spawn_case "profile-raw-compound-$label" claude "$id")
+    read_case_record "$rec"
+    enable_dispatch_profile "$HOME_DIR"
+
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "$raw")
+    status=$?
+    expect_code 0 "$status" "$label raw launch should preserve prior spawn behavior"
+    assert_contains "$out" "agent exit capture is off" "$label raw launch did not warn that capture was disabled"
+    launch=$(cat "$LAUNCH_LOG")
+    [ "$launch" = "$raw" ] || fail "$label raw launch changed"$'\n'"actual: $launch"
+    assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "$label raw launch did not record disabled capture"
+    assert_absent "$HOME_DIR/state/$id.exit" "$label raw launch unexpectedly armed an exit record"
+  done
+  pass "raw pipeline and exec launches disable exit capture"
+}
+
 test_claude_threads_model_and_effort() {
   local rec id out status launch
   id=profile-claude-z2
@@ -712,6 +735,7 @@ test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
 test_active_dispatch_profile_allows_raw_launch_command
 test_raw_launch_trailing_control_operator_disables_exit_capture
+test_raw_launch_compound_forms_disable_exit_capture
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort
