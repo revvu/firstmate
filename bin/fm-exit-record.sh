@@ -29,6 +29,8 @@
 # An ABSENT record, an armed-only record, and an unreadable record all read as
 # UNKNOWN. None of them ever reads as a clean exit: inferring success from
 # absent evidence is the exact failure this record exists to remove.
+# Before starting any new agent incarnation, fm-spawn calls `retire` exactly
+# once so evidence keyed by the task id cannot be attributed to its successor.
 #
 # Fields:
 #   v=1                     record format version

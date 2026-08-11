@@ -800,6 +800,10 @@ if ! fm_lock_try_acquire "$SPAWN_TASK_LOCK"; then
   exit 1
 fi
 SPAWN_TASK_LOCK_HELD=1
+if ! "$FM_ROOT/bin/fm-exit-record.sh" retire "$STATE" "$ID"; then
+  echo "error: prior agent exit record could not be retired for spawn $ID" >&2
+  exit 1
+fi
 PROJ=
 ARG3=
 FIRSTMATE_HOME=
@@ -2158,10 +2162,6 @@ fi
 # reads as unknown rather than as a clean exit.
 EXIT_CAPTURE=off
 if [ "$RAW_LAUNCH" -eq 1 ]; then
-  if ! "$FM_ROOT/bin/fm-exit-record.sh" retire "$STATE_REAL" "$ID"; then
-    echo "error: prior agent exit record could not be retired for raw launch $ID" >&2
-    exit 1
-  fi
   echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
 elif "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
   EXIT_CAPTURE=on

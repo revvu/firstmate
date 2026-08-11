@@ -48,6 +48,27 @@ SH
   printf '%s\n' "$fakebin"
 }
 
+make_exit_record_proxy_root() {
+  local dir=$1 root source name
+  root="$dir/fm-root"
+  mkdir -p "$root/bin"
+  for source in "$ROOT"/bin/*; do
+    name=$(basename "$source")
+    [ "$name" = fm-exit-record.sh ] || ln -s "$source" "$root/bin/$name"
+  done
+  cat > "$root/bin/fm-exit-record.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "${1:-missing}" >> "${FM_TEST_EXITREC_CALLS:?}"
+if [ "${1:-}" = arm ] && [ "${FM_TEST_EXITREC_FAIL_ARM:-0}" = 1 ]; then
+  exit 2
+fi
+exec "${FM_TEST_REAL_EXITREC:?}" "$@"
+SH
+  chmod +x "$root/bin/fm-exit-record.sh"
+  printf '%s\n' "$root"
+}
+
 make_spawn_case() {
   local name=$1 harness=$2 case_dir home proj wt fakebin launchlog id
   shift 2
@@ -90,11 +111,14 @@ run_spawn() {
   # explicitly (empty by default) instead of leaking the invoking shell's value,
   # which would make launch assertions depend on the developer's environment.
   # A test opts in to the set case via FM_TEST_CLAUDE_CONFIG_DIR.
-  FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-}" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
+    FM_TEST_EXITREC_CALLS="${FM_TEST_EXITREC_CALLS:-}" \
+    FM_TEST_EXITREC_FAIL_ARM="${FM_TEST_EXITREC_FAIL_ARM:-0}" \
+    FM_TEST_REAL_EXITREC="$EXITREC" \
     FM_FAKE_LAUNCH_LOG="$launchlog" GROK_HOME="$home/grok-home" PATH="$fakebin:$PATH" \
     "$SPAWN" "$@" 2>&1
 }
@@ -388,23 +412,30 @@ test_raw_launch_always_disables_exit_capture() {
 }
 
 test_composed_to_raw_respawn_retires_prior_exit_record() {
-  local rec id out status state
+  local rec id out status state proxy calls
   id=profile-raw-respawn
   rec=$(make_spawn_case profile-raw-respawn claude "$id")
   read_case_record "$rec"
   enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-    "$id" "$PROJ_DIR" --harness claude)
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
   status=$?
   expect_code 0 "$status" "composed launch before raw respawn should succeed"
   "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive prior exit could not be recorded"
   assert_grep 'exit_signal=9' "$HOME_DIR/state/$id.exit" "prior exit record did not carry SIGKILL"
+  : > "$calls"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-    "$id" "$PROJ_DIR" "custom-agent --flag")
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "custom-agent --flag")
   status=$?
   expect_code 0 "$status" "raw same-id respawn should succeed"
+  [ "$(cat "$calls")" = retire ] || fail "raw respawn did not retire exactly once before capture selection"
   assert_absent "$HOME_DIR/state/$id.exit" "raw same-id respawn retained the prior exit record"
   assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "raw same-id respawn did not disable capture"
   state=$(
@@ -420,23 +451,96 @@ test_composed_to_raw_respawn_retires_prior_exit_record() {
   pass "composed-to-raw respawn retires the prior exit record"
 }
 
-test_raw_launch_refuses_failed_exit_record_retirement() {
+test_raw_to_composed_respawn_retires_before_arming() {
+  local rec id out status proxy calls expected
+  id=profile-composed-respawn
+  rec=$(make_spawn_case profile-composed-respawn claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "custom-agent --flag")
+  status=$?
+  expect_code 0 "$status" "raw launch before composed respawn should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive stale exit could not be recorded"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed same-id respawn should succeed"
+  expected=$'retire\narm'
+  [ "$(cat "$calls")" = "$expected" ] \
+    || fail "composed respawn did not retire exactly once before arming"
+  assert_grep 'armed_at=' "$HOME_DIR/state/$id.exit" "composed respawn did not arm a new exit record"
+  assert_not_contains "$(cat "$HOME_DIR/state/$id.exit")" 'exit_signal=9' \
+    "composed respawn retained the prior signal"
+  pass "raw-to-composed respawn retires once before arming"
+}
+
+test_composed_respawn_arm_failure_leaves_no_stale_record() {
+  local rec id out status proxy calls expected state
+  id=profile-composed-arm-failure
+  rec=$(make_spawn_case profile-composed-arm-failure claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "initial composed launch should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive prior exit could not be recorded"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    FM_TEST_EXITREC_FAIL_ARM=1 \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed respawn should degrade when arming fails"
+  expected=$'retire\narm'
+  [ "$(cat "$calls")" = "$expected" ] \
+    || fail "arm-failure respawn did not retire exactly once before arming"
+  assert_contains "$out" "could not be armed" "arm failure did not warn"
+  assert_absent "$HOME_DIR/state/$id.exit" "arm-failure respawn retained the prior exit record"
+  assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "arm-failure respawn did not disable capture"
+  state=$(
+    FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$HOME_DIR/state" \
+      FM_DATA_OVERRIDE="$HOME_DIR/data" FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" \
+      FM_CONFIG_OVERRIDE="$HOME_DIR/config" TMUX="fake,1,0" \
+      PATH="$FAKEBIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "$CREW_STATE" "$id"
+  )
+  assert_not_contains "$state" 'signal 9' "arm-failure respawn reported the prior signal"
+  assert_not_contains "$state" 'SIGKILL' "arm-failure respawn reported the prior signal name"
+  pass "composed arm-failure respawn leaves no stale exit record"
+}
+
+test_spawn_refuses_failed_exit_record_retirement() {
   local rec id out status
-  id=profile-raw-retire-failure
-  rec=$(make_spawn_case profile-raw-retire-failure claude "$id")
+  id=profile-retire-failure
+  rec=$(make_spawn_case profile-retire-failure claude "$id")
   read_case_record "$rec"
   enable_dispatch_profile "$HOME_DIR"
   mkdir "$HOME_DIR/state/$id.exit"
 
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-    "$id" "$PROJ_DIR" "custom-agent --flag")
+    "$id" "$PROJ_DIR" --harness claude)
   status=$?
-  [ "$status" -ne 0 ] || fail "raw launch continued after exit-record retirement failed"
-  assert_contains "$out" "could not be retired" "raw launch retirement failure was not reported"
-  assert_not_contains "$(cat "$HOME_DIR/state/$id.meta")" 'exit_capture=off' \
-    "failed retirement was incorrectly published as capture off"
-  [ ! -s "$LAUNCH_LOG" ] || fail "raw launch was sent after exit-record retirement failed"
-  pass "raw launch refuses a failed exit-record retirement"
+  [ "$status" -ne 0 ] || fail "spawn continued after exit-record retirement failed"
+  assert_contains "$out" "could not be retired" "spawn retirement failure was not reported"
+  assert_absent "$HOME_DIR/state/$id.meta" "failed retirement allowed spawn metadata publication"
+  [ ! -s "$LAUNCH_LOG" ] || fail "launch was sent after exit-record retirement failed"
+  pass "spawn refuses a failed exit-record retirement"
 }
 
 test_claude_threads_model_and_effort() {
@@ -757,7 +861,9 @@ test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
 test_raw_launch_always_disables_exit_capture
 test_composed_to_raw_respawn_retires_prior_exit_record
-test_raw_launch_refuses_failed_exit_record_retirement
+test_raw_to_composed_respawn_retires_before_arming
+test_composed_respawn_arm_failure_leaves_no_stale_record
+test_spawn_refuses_failed_exit_record_retirement
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort

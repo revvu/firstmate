@@ -314,6 +314,7 @@ This record supports the guarantee that a launched agent's disappearance is self
 
 The capture is appended to the launch line by `bin/fm-spawn.sh`, so it is the pane shell's own `$?` and is delivered by whatever text-send path the selected runtime backend uses.
 It is therefore backend-independent by construction rather than per-adapter, and tmux is where it is proven live; herdr, zellij, orca, and cmux inherit the same mechanism through the shared launch-line delivery.
+Every spawn retires the task id's prior exit record once at common spawn entry before choosing whether to arm capture for the new agent incarnation, and a failed retirement refuses the spawn.
 Every raw launch-command spawn is deliberately excluded from exit capture because its arbitrary shell status cannot be safely attributed to the agent; it warns, records `exit_capture=off` in the task metadata, creates no exit record, and therefore degrades to `unknown` rather than reporting a false exit.
 
 Captured on 2026-08-10 (the record's UTC stamps read 2026-08-11) with tmux 3.7b, bash 5.3.9, zsh 5.9.1, on macOS 26.5.2 arm64.
