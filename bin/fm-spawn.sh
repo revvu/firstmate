@@ -800,6 +800,17 @@ if ! fm_lock_try_acquire "$SPAWN_TASK_LOCK"; then
   exit 1
 fi
 SPAWN_TASK_LOCK_HELD=1
+# Retiring the previous incarnation's exit record is a direct unlink, not a call
+# out to bin/fm-exit-record.sh: retirement must not become a hard prerequisite for
+# spawning. `arm` below has always tolerated that helper being absent, and the
+# same tolerance belongs here. `rm -f` succeeds when there is no record, so an
+# absent helper or an absent record can never block a launch. A record that
+# EXISTS and will not go is the real hazard - a new incarnation running under the
+# previous one's recorded signal - so that still refuses the spawn.
+if ! rm -f -- "$STATE/$ID.exit"; then
+  echo "error: prior agent exit record could not be retired for spawn $ID" >&2
+  exit 1
+fi
 PROJ=
 ARG3=
 FIRSTMATE_HOME=
@@ -876,8 +887,10 @@ launch_template() {
   esac
 }
 
+RAW_LAUNCH=0
 case "$ARG3" in
   *' '*)  # raw launch command (unverified-adapter escape hatch)
+    RAW_LAUNCH=1
     LAUNCH=$ARG3
     HARNESS=""
     for word in $LAUNCH; do
@@ -2140,6 +2153,34 @@ if [ "$KIND" = secondmate ]; then
   # injected carrier and this on/off snapshot are guaranteed to agree.
   LAUNCH="FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$sq_primary_home FM_HOME=$sq_home FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE $LAUNCH"
 fi
+# Agent exit capture (bin/fm-exit-record.sh owns the record and its limits). Arm
+# the record, then append the recorder to the launch line so the PANE SHELL
+# writes the agent's exit status the moment the agent returns - no watcher, no
+# poll, and one mechanism for every backend, because every backend delivers this
+# launch line through the same shell text-send path.
+#
+# `"$?"` is expanded in the pane, by that shell, against the launch command that
+# just finished; it must stay literal here. The recorder is silenced and
+# `|| true` so an instrumentation failure can never change what the pane shows
+# or leave a nonzero status behind the agent.
+#
+# A raw launch command is unverified shell text, so its status cannot be safely
+# attributed to the agent. Those spawns run unwrapped and record nothing, which
+# reads as unknown rather than as a clean exit.
+EXIT_CAPTURE=off
+if [ "$RAW_LAUNCH" -eq 1 ]; then
+  echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
+elif "$FM_ROOT/bin/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
+  EXIT_CAPTURE=on
+  LAUNCH="$LAUNCH; $(shell_quote "$FM_ROOT/bin/fm-exit-record.sh") record $(shell_quote "$STATE_REAL") $(shell_quote "$ID") \"\$?\" >/dev/null 2>&1 || true"
+else
+  echo "warning: agent exit capture could not be armed for $ID" >&2
+fi
+# Only the OFF case is recorded, so an ordinary task's meta stays byte-identical
+# (the same convention backend= and traceparent= follow). An absent record plus
+# no exit_capture= line means the task predates exit capture; an absent record
+# WITH this line means the spawn deliberately ran unwrapped.
+[ "$EXIT_CAPTURE" = on ] || echo "exit_capture=off" >> "$STATE/$ID.meta"
 # Export GOTMPDIR into the crewmate's pane shell so the agent and every child
 # process (go build, go test, ...) inherit it. Sent before the launch command so
 # the env is set when the agent starts; the brief sleep lets the export land.

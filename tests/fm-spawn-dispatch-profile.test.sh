@@ -11,6 +11,8 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
+EXITREC="$ROOT/bin/fm-exit-record.sh"
+CREW_STATE="$ROOT/bin/fm-crew-state.sh"
 TMP_ROOT=$(fm_test_tmproot fm-spawn-dispatch-profile)
 
 make_spawn_fakebin() {
@@ -44,6 +46,27 @@ SH
   chmod +x "$fakebin/tmux"
   fm_fake_exit0 "$fakebin" treehouse pi-signed
   printf '%s\n' "$fakebin"
+}
+
+make_exit_record_proxy_root() {
+  local dir=$1 root source name
+  root="$dir/fm-root"
+  mkdir -p "$root/bin"
+  for source in "$ROOT"/bin/*; do
+    name=$(basename "$source")
+    [ "$name" = fm-exit-record.sh ] || ln -s "$source" "$root/bin/$name"
+  done
+  cat > "$root/bin/fm-exit-record.sh" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "${1:-missing}" >> "${FM_TEST_EXITREC_CALLS:?}"
+if [ "${1:-}" = arm ] && [ "${FM_TEST_EXITREC_FAIL_ARM:-0}" = 1 ]; then
+  exit 2
+fi
+exec "${FM_TEST_REAL_EXITREC:?}" "$@"
+SH
+  chmod +x "$root/bin/fm-exit-record.sh"
+  printf '%s\n' "$root"
 }
 
 make_spawn_case() {
@@ -88,11 +111,14 @@ run_spawn() {
   # explicitly (empty by default) instead of leaking the invoking shell's value,
   # which would make launch assertions depend on the developer's environment.
   # A test opts in to the set case via FM_TEST_CLAUDE_CONFIG_DIR.
-  FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-}" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
+    FM_TEST_EXITREC_CALLS="${FM_TEST_EXITREC_CALLS:-}" \
+    FM_TEST_EXITREC_FAIL_ARM="${FM_TEST_EXITREC_FAIL_ARM:-0}" \
+    FM_TEST_REAL_EXITREC="$EXITREC" \
     FM_FAKE_LAUNCH_LOG="$launchlog" GROK_HOME="$home/grok-home" PATH="$fakebin:$PATH" \
     "$SPAWN" "$@" 2>&1
 }
@@ -117,7 +143,7 @@ assert_meta_profile() {
 }
 
 test_no_profile_keeps_claude_profile_defaults() {
-  local rec id out status expected launch
+  local rec id out status expected launch launch_kind
   id=profile-off-z1
   rec=$(make_spawn_case profile-off claude "$id")
   read_case_record "$rec"
@@ -129,8 +155,10 @@ test_no_profile_keeps_claude_profile_defaults() {
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
 
   launch=$(cat "$LAUNCH_LOG")
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the claude launch line carried no agent exit recorder"$'\n'"actual:   $launch"
   expected="CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false claude --dangerously-skip-permissions \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/brief.md')\""
-  [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch_kind"
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
@@ -348,22 +376,172 @@ test_active_dispatch_profile_allows_positional_harness() {
   pass "active crew-dispatch profile allows the legacy positional harness form"
 }
 
-test_active_dispatch_profile_allows_raw_launch_command() {
-  local rec id out status launch
-  id=profile-raw-z15
-  rec=$(make_spawn_case profile-raw claude "$id")
+test_raw_launch_always_disables_exit_capture() {
+  local spec label raw rec id out status launch
+  for spec in \
+    'plain:custom-agent --flag' \
+    'pipeline:custom-agent | tee log' \
+    'exec:exec custom-agent' \
+    'negation:! custom-agent' \
+    'amp:custom-agent & ' \
+    'semicolon:custom-agent ; ' \
+    'pipe:custom-agent | '
+  do
+    label=${spec%%:*}
+    raw=${spec#*:}
+    id="profile-raw-$label"
+    rec=$(make_spawn_case "profile-raw-$label" claude "$id")
+    read_case_record "$rec"
+    enable_dispatch_profile "$HOME_DIR"
+
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "$raw")
+    status=$?
+    expect_code 0 "$status" "$label raw launch should satisfy the active dispatch profile"
+    assert_contains "$out" "agent exit capture is off" "$label raw launch did not warn that capture was disabled"
+    launch=$(cat "$LAUNCH_LOG")
+    [ "$launch" = "$raw" ] || fail "$label raw launch changed"$'\n'"actual: $launch"
+    assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "$label raw launch did not record disabled capture"
+    assert_absent "$HOME_DIR/state/$id.exit" "$label raw launch unexpectedly armed an exit record"
+    if [ "$label" = plain ]; then
+      assert_contains "$out" "spawned $id harness=custom-agent" "plain raw launch did not report its harness"
+      assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
+    fi
+  done
+  pass "all raw launch commands disable exit capture"
+}
+
+test_composed_to_raw_respawn_retires_prior_exit_record() {
+  local rec id out status state proxy calls
+  id=profile-raw-respawn
+  rec=$(make_spawn_case profile-raw-respawn claude "$id")
   read_case_record "$rec"
   enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed launch before raw respawn should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive prior exit could not be recorded"
+  assert_grep 'exit_signal=9' "$HOME_DIR/state/$id.exit" "prior exit record did not carry SIGKILL"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "custom-agent --flag")
+  status=$?
+  expect_code 0 "$status" "raw same-id respawn should succeed"
+  # Retirement is a direct unlink, so there is no helper call to observe. The
+  # absent record IS the guarantee: a raw respawn leaves nothing behind for
+  # fm-crew-state.sh to attribute to the new incarnation.
+  assert_absent "$HOME_DIR/state/$id.exit" "raw same-id respawn retained the prior exit record"
+  assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "raw same-id respawn did not disable capture"
+  state=$(
+    FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$HOME_DIR/state" \
+      FM_DATA_OVERRIDE="$HOME_DIR/data" FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" \
+      FM_CONFIG_OVERRIDE="$HOME_DIR/config" TMUX="fake,1,0" \
+      PATH="$FAKEBIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "$CREW_STATE" "$id"
+  )
+  assert_contains "$state" 'state: unknown' "raw same-id respawn did not degrade to unknown"
+  assert_not_contains "$state" 'signal 9' "raw same-id respawn reported the prior signal"
+  assert_not_contains "$state" 'SIGKILL' "raw same-id respawn reported the prior signal name"
+  pass "composed-to-raw respawn retires the prior exit record"
+}
+
+test_raw_to_composed_respawn_retires_before_arming() {
+  local rec id out status proxy calls
+  id=profile-composed-respawn
+  rec=$(make_spawn_case profile-composed-respawn claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" "custom-agent --flag")
+  status=$?
+  expect_code 0 "$status" "raw launch before composed respawn should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive stale exit could not be recorded"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed same-id respawn should succeed"
+  # These two asserts carry the ordering guarantee the old call-log spy encoded:
+  # a fresh armed record still present proves retirement ran BEFORE arming, since
+  # retiring afterwards would have deleted it.
+  assert_grep 'armed_at=' "$HOME_DIR/state/$id.exit" "composed respawn did not arm a new exit record"
+  assert_not_contains "$(cat "$HOME_DIR/state/$id.exit")" 'exit_signal=9' \
+    "composed respawn retained the prior signal"
+  pass "raw-to-composed respawn retires once before arming"
+}
+
+test_composed_respawn_arm_failure_leaves_no_stale_record() {
+  local rec id out status proxy calls state
+  id=profile-composed-arm-failure
+  rec=$(make_spawn_case profile-composed-arm-failure claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  proxy=$(make_exit_record_proxy_root "$CASE_DIR")
+  calls="$CASE_DIR/exitrec.calls"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "initial composed launch should succeed"
+  "$EXITREC" record "$HOME_DIR/state" "$id" 137 || fail "distinctive prior exit could not be recorded"
+  : > "$calls"
+
+  out=$(FM_TEST_ROOT_OVERRIDE="$proxy" FM_TEST_EXITREC_CALLS="$calls" \
+    FM_TEST_EXITREC_FAIL_ARM=1 \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+      "$id" "$PROJ_DIR" --harness claude)
+  status=$?
+  expect_code 0 "$status" "composed respawn should degrade when arming fails"
+  # A failed arm cannot mask a missed retirement here: the prior record must be
+  # gone even though nothing new was armed over it.
+  assert_contains "$out" "could not be armed" "arm failure did not warn"
+  assert_absent "$HOME_DIR/state/$id.exit" "arm-failure respawn retained the prior exit record"
+  assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "arm-failure respawn did not disable capture"
+  state=$(
+    FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$HOME_DIR/state" \
+      FM_DATA_OVERRIDE="$HOME_DIR/data" FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" \
+      FM_CONFIG_OVERRIDE="$HOME_DIR/config" TMUX="fake,1,0" \
+      PATH="$FAKEBIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+      "$CREW_STATE" "$id"
+  )
+  assert_not_contains "$state" 'signal 9' "arm-failure respawn reported the prior signal"
+  assert_not_contains "$state" 'SIGKILL' "arm-failure respawn reported the prior signal name"
+  pass "composed arm-failure respawn leaves no stale exit record"
+}
+
+test_spawn_refuses_failed_exit_record_retirement() {
+  local rec id out status
+  id=profile-retire-failure
+  rec=$(make_spawn_case profile-retire-failure claude "$id")
+  read_case_record "$rec"
+  enable_dispatch_profile "$HOME_DIR"
+  mkdir "$HOME_DIR/state/$id.exit"
 
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-    "$id" "$PROJ_DIR" "custom-agent --flag")
+    "$id" "$PROJ_DIR" --harness claude)
   status=$?
-  expect_code 0 "$status" "raw launch command should satisfy active dispatch-profile requirement"
-  assert_contains "$out" "spawned $id harness=custom-agent" "spawn did not report raw command harness"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
-  launch=$(cat "$LAUNCH_LOG")
-  [ "$launch" = "custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
-  pass "active crew-dispatch profile allows the raw launch-command escape hatch"
+  [ "$status" -ne 0 ] || fail "spawn continued after exit-record retirement failed"
+  assert_contains "$out" "could not be retired" "spawn retirement failure was not reported"
+  assert_absent "$HOME_DIR/state/$id.meta" "failed retirement allowed spawn metadata publication"
+  [ ! -s "$LAUNCH_LOG" ] || fail "launch was sent after exit-record retirement failed"
+  pass "spawn refuses a failed exit-record retirement"
 }
 
 test_claude_threads_model_and_effort() {
@@ -682,7 +860,11 @@ test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
-test_active_dispatch_profile_allows_raw_launch_command
+test_raw_launch_always_disables_exit_capture
+test_composed_to_raw_respawn_retires_prior_exit_record
+test_raw_to_composed_respawn_retires_before_arming
+test_composed_respawn_arm_failure_leaves_no_stale_record
+test_spawn_refuses_failed_exit_record_retirement
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort
 test_codex_omits_invalid_max_effort

@@ -16,7 +16,11 @@
 # fixed mapping logic, no heuristics and no LLM. Output is one stable, parseable,
 # token-tight line firstmate can read every heartbeat:
 #
-#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|none> · <detail>
+#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|exit-record|none> · <detail>
+#
+# `failed · exit-record` is the one state that does not describe the WORK: it
+# means the launched agent PROCESS terminated abnormally and firstmate has the
+# recorded status or signal (bin/fm-exit-record.sh).
 #
 # Logic, in order:
 #   1. Resolve worktree + backend target + kind from state/<id>.meta.
@@ -49,9 +53,15 @@
 #      recorded backend's pane busy state, then the status log's last line only
 #      when its verb maps to a recognized run-state. Decision-only events such as
 #      `resolved` never become current state or detail.
-#   5. Missing meta or torn-down worktree: report unknown · none. If no run is
-#      attributed to this crew, a dead endpoint also reports unknown · none rather
-#      than trusting a stale status log.
+#   5. Recorded agent exit: an abnormal exit with confirmed dead or missing
+#      agent liveness becomes failed · exit-record, outranking the endpoint and
+#      status log alike. Unverifiable liveness becomes unknown · exit-record;
+#      verified live or newer lifecycle evidence makes the record historical.
+#      A run-step remains authoritative and carries the exit as detail. An
+#      absent, armed-only, unreadable, or clean record never proves success.
+#   6. Missing meta or torn-down worktree: report unknown · none. If no run is
+#      attributed to this crew and no exit was recorded, a dead endpoint also
+#      reports unknown · none rather than trusting a stale status log.
 #
 # Read-only and side-effect free. Always exits 0 on a successful read regardless
 # of state; exit 2 only on a usage error (no id).
@@ -111,6 +121,67 @@ HARNESS=$(meta_value harness)
 if [ -z "$WT" ] || [ ! -d "$WT" ]; then
   emit unknown none "worktree gone (torn down?)"
 fi
+
+# --- recorded agent exit ----------------------------------------------------
+# The one source that survives the agent's own death (bin/fm-exit-record.sh owns
+# the record, its lifecycle states, and the signal-derivation limit). Before it
+# existed, a process disappearance left no first-party termination evidence. A
+# cheap file read, so it runs on every call; `none`, `armed`, and `unreadable`
+# never establish a clean exit.
+EXIT_BIN="$SCRIPT_DIR/fm-exit-record.sh"
+EXIT_DISPOSITION=none
+EXIT_DETAIL=""
+if [ -x "$EXIT_BIN" ]; then
+  IFS=$'\t' read -r EXIT_DISPOSITION EXIT_DETAIL \
+    < <("$EXIT_BIN" show "$STATE" "$ID" 2>/dev/null) || true
+  [ -n "$EXIT_DISPOSITION" ] || EXIT_DISPOSITION=none
+fi
+
+# A recorded abnormal exit describes the incarnation that spawn armed. A
+# verified live agent or a newer semantic lifecycle event makes it historical.
+# A backend that cannot distinguish a live agent from its surviving endpoint
+# stays unknown while preserving the exit evidence instead of claiming either.
+exit_record_relation() {
+  local agent_state
+  [ "$EXIT_DISPOSITION" = recorded-abnormal ] || { printf 'historical'; return 0; }
+  [ -n "${BACKEND_TARGET:-}" ] || { printf 'current'; return 0; }
+  agent_state=$(fm_backend_agent_state "$TASK_BACKEND" "$BACKEND_TARGET" 2>/dev/null || true)
+  case "$agent_state" in
+    alive) printf 'historical'; return 0 ;;
+    dead|missing) printf 'current'; return 0 ;;
+  esac
+  if [ "$STATE/$ID.busy-state" -nt "$STATE/$ID.exit" ] \
+     || [ "$STATE/$ID.turn-ended" -nt "$STATE/$ID.exit" ]; then
+    printf 'historical'
+  else
+    printf 'ambiguous'
+  fi
+}
+
+detail_with_exit() {  # [detail]
+  local detail=${1:-}
+  if [ -n "$EXIT_DETAIL" ]; then
+    if [ -n "$detail" ]; then detail="$detail${SEP}$EXIT_DETAIL"; else detail=$EXIT_DETAIL; fi
+  fi
+  printf '%s' "$detail"
+}
+
+emit_exit_if_authoritative() {
+  case "$(exit_record_relation)" in
+    current) emit failed exit-record "$EXIT_DETAIL" ;;
+    ambiguous) emit unknown exit-record "$EXIT_DETAIL${SEP}current agent liveness unverified" ;;
+  esac
+}
+
+# emit(), except that the recorded exit is never lost: a current abnormal exit
+# becomes the verdict, and any other readable record rides along as extra detail
+# behind the caller's own.
+emit_with_exit() {  # <state> <source> [detail]
+  local detail=${3:-}
+  emit_exit_if_authoritative
+  detail=$(detail_with_exit "$detail")
+  emit "$1" "$2" "$detail"
+}
 
 # --- status log ------------------------------------------------------------
 
@@ -709,6 +780,14 @@ if [ "$HAVE_RUN" = 1 ]; then
       ;;
   esac
 
+  # The run-step stays authoritative for the WORK's state; a recorded abnormal
+  # exit is a separate fact about the agent PROCESS and rides along as detail, so
+  # "the pipeline is still running but its driver died" is visible in one read
+  # instead of requiring a second investigation.
+  if [ "$EXIT_DISPOSITION" = recorded-abnormal ]; then
+    RUN_DETAIL="$RUN_DETAIL${SEP}$EXIT_DETAIL"
+  fi
+
   emit "$RUN_STATE" run-step "$RUN_DETAIL"
 fi
 
@@ -717,8 +796,8 @@ fi
 # liveness, so a finished-but-pane-closed crew never reaches here. Down here there
 # is no run to consult, so a dead/unreadable target means the crew is gone: report
 # unknown rather than trusting a possibly-stale status log as the current state.
-[ -n "$BACKEND_TARGET" ] || emit unknown none "no backend target recorded"
-pane_readable "$BACKEND_TARGET" || emit unknown none "backend target gone: $BACKEND_TARGET"
+[ -n "$BACKEND_TARGET" ] || emit_with_exit unknown none "no backend target recorded"
+pane_readable "$BACKEND_TARGET" || emit_with_exit unknown none "backend target gone: $BACKEND_TARGET"
 
 # Secondmates idle on their own watcher (idle pane = healthy), so the busy
 # state is not meaningful for them; read their state from the status log only.
@@ -728,11 +807,16 @@ pane_readable "$BACKEND_TARGET" || emit unknown none "backend target gone: $BACK
 if [ "$KIND" != secondmate ]; then
   BUSY_VERDICT=$(crew_busy_verdict "$BACKEND_TARGET")
   case "${BUSY_VERDICT%% *}" in
-    busy) emit working pane "harness busy (${BUSY_VERDICT#* })" ;;
+    busy) emit_with_exit working pane "harness busy (${BUSY_VERDICT#* })" ;;
     idle) ;;
-    *) emit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
+    *) emit_with_exit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
   esac
 fi
+
+# A recorded abnormal exit outranks the status log: the log's last line is an
+# event the crew appended while it was still alive, so it can only ever describe
+# what the crew was doing BEFORE the process died.
+emit_exit_if_authoritative
 
 # Fall back to the status log's last line, but ONLY when its verb maps to a real
 # run-state. A decision-closing event - resolved: (fm-classify-lib.sh's
@@ -747,8 +831,8 @@ fi
 if [ -n "$LOG_VERB" ]; then
   LOG_STATE=$(map_log_state "$LOG_LINE")
   if [ "$LOG_STATE" != unknown ]; then
-    emit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
+    emit_with_exit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
   fi
 fi
 
-emit unknown none "no current-state source available"
+emit_with_exit unknown none "no current-state source available"

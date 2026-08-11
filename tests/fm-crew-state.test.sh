@@ -85,7 +85,17 @@ set -u
 case "${1:-}" in
   display-message)
     [ "${FM_FAKE_TMUX_MISSING:-0}" = 1 ] && exit 1
-    printf '%%1\n' ;;
+    # #{pane_current_command} is the one format whose VALUE matters here: it is
+    # the last name source the agent-liveness classifier consults, so a case that
+    # needs a LIVE agent in the pane drives it through FM_FAKE_TMUX_CURRENT_COMMAND.
+    # Every other format keeps returning the opaque pane id it always did.
+    case "$*" in
+      *pane_current_command*) printf '%s\n' "${FM_FAKE_TMUX_CURRENT_COMMAND:-%1}" ;;
+      *) printf '%%1\n' ;;
+    esac ;;
+  list-windows)
+    [ -n "${FM_FAKE_TMUX_WINDOWS:-}" ] && printf '%s\n' "$FM_FAKE_TMUX_WINDOWS"
+    exit 0 ;;
   capture-pane)
     [ "${FM_FAKE_TMUX_MISSING:-0}" = 1 ] && exit 1
     if [ "${FM_FAKE_BUSY:-0}" = 1 ]; then printf 'work in progress\n%s\n' "${FM_FAKE_BUSY_TEXT:-esc to interrupt}"
@@ -166,11 +176,14 @@ reset_fakes() {
   FM_FAKE_BUSY=0
   FM_FAKE_BUSY_TEXT=
   FM_FAKE_TMUX_MISSING=0
+  FM_FAKE_TMUX_WINDOWS=""
+  FM_FAKE_TMUX_CURRENT_COMMAND=""
   FM_FAKE_HERDR_BUSY=0
   FM_FAKE_HERDR_MISSING=0
   FM_FAKE_HERDR_AGENT_STATUS=""
   FM_FAKE_CI_LOGS=""
   export FM_FAKE_AXI_STATUS FM_FAKE_AXI_STATUS_RUN FM_FAKE_RUNS_LIST FM_FAKE_BUSY FM_FAKE_BUSY_TEXT FM_FAKE_TMUX_MISSING
+  export FM_FAKE_TMUX_WINDOWS FM_FAKE_TMUX_CURRENT_COMMAND
   export FM_FAKE_HERDR_BUSY FM_FAKE_HERDR_MISSING FM_FAKE_HERDR_AGENT_STATUS FM_FAKE_CI_LOGS
 }
 
@@ -1511,6 +1524,177 @@ test_ci_green_override_survives_active_step_row() {
   pass "the ci-green override is unaffected by the active_steps row"
 }
 
+# --- recorded agent exit (bin/fm-exit-record.sh) ----------------------------
+# Before the exit record existed, an agent that died mid-task read
+# "state: unknown - source: none" and firstmate could report only that work
+# stopped. These cases pin both directions: a recorded abnormal exit must be
+# reported with its signal, and every not-recorded shape must stay unknown
+# rather than being read as a clean finish.
+
+arm_exit_record() {  # <state-dir> <id>
+  "$ROOT/bin/fm-exit-record.sh" arm "$1" "$2"
+}
+record_exit() {  # <state-dir> <id> <status>
+  "$ROOT/bin/fm-exit-record.sh" arm "$1" "$2"
+  "$ROOT/bin/fm-exit-record.sh" record "$1" "$2" "$3"
+}
+
+test_dead_window_reports_recorded_abnormal_exit() {
+  reset_fakes
+  local d; d=$(new_case exit-dead)
+  make_repo_on_branch "$d/wt" fm/feat-exitdead
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitdead.meta" "window=fm:fm-feat-exitdead" "worktree=$d/wt" "kind=ship"
+  printf 'working: implementing\n' > "$d/state/feat-exitdead.status"
+  record_exit "$d/state" feat-exitdead 137
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exitdead)
+  assert_contains "$out" "state: failed" "a recorded abnormal exit is a failed state"
+  assert_contains "$out" "source: exit-record" "the verdict names the exit record as its source"
+  assert_contains "$out" "signal 9" "the verdict names the signal"
+  assert_not_contains "$out" "source: none" "a dead endpoint no longer reports an unexplained unknown"
+  pass "a dead endpoint with a recorded signal reports failed - exit-record, not unknown - none"
+}
+
+test_abnormal_exit_outranks_stale_status_log() {
+  reset_fakes
+  local d; d=$(new_case exit-vs-log)
+  make_repo_on_branch "$d/wt" fm/feat-exitlog
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitlog.meta" "window=fm:fm-feat-exitlog" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'working: still implementing\n' > "$d/state/feat-exitlog.status"
+  arm_idle_record "$d/state" feat-exitlog
+  record_exit "$d/state" feat-exitlog 143
+  local out; out=$(run_crew_state "$d" feat-exitlog)
+  assert_contains "$out" "state: failed" "the recorded exit, not the log, is current"
+  assert_contains "$out" "source: exit-record" "the exit record is the source"
+  assert_contains "$out" "signal 15" "the verdict names the signal"
+  assert_not_contains "$out" "source: status-log" "a line the crew wrote while alive cannot be current"
+  pass "a recorded abnormal exit outranks a status log written before the process died"
+}
+
+# The guard against a false failure report: a resume typed straight into the pane
+# leaves the previous incarnation's record standing, so a LIVE agent must win.
+test_live_agent_outranks_a_stale_exit_record() {
+  reset_fakes
+  local d; d=$(new_case exit-stale)
+  make_repo_on_branch "$d/wt" fm/feat-exitstale
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitstale.meta" "window=fm:fm-feat-exitstale" "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'working: resumed by hand\n' > "$d/state/feat-exitstale.status"
+  arm_idle_record "$d/state" feat-exitstale
+  record_exit "$d/state" feat-exitstale 137
+  FM_FAKE_TMUX_WINDOWS="fm-feat-exitstale"
+  FM_FAKE_TMUX_CURRENT_COMMAND=claude
+  local out; out=$(run_crew_state "$d" feat-exitstale)
+  assert_not_contains "$out" "source: exit-record" "a live agent must outrank a historical exit record"
+  assert_contains "$out" "state: working" "the resumed crew reports its status-log state"
+  assert_contains "$out" "signal 9" "the historical record still rides along as detail"
+  pass "a live agent in the endpoint outranks a stale exit record but keeps it visible"
+}
+
+test_busy_evidence_outranks_a_stale_exit_record() {
+  reset_fakes
+  local d; d=$(new_case exit-stale-busy)
+  make_repo_on_branch "$d/wt" fm/feat-exitstalebusy
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitstalebusy.meta" "window=fm:fm-feat-exitstalebusy" "worktree=$d/wt" "kind=ship" "harness=claude"
+  local gen; gen=$("$ROOT/bin/fm-busy-event.sh" arm "$d/state" feat-exitstalebusy)
+  record_exit "$d/state" feat-exitstalebusy 137
+  FM_FAKE_TMUX_WINDOWS="fm-feat-exitstalebusy"
+  FM_FAKE_TMUX_CURRENT_COMMAND=unverified-agent
+  local out; out=$(run_crew_state "$d" feat-exitstalebusy)
+  assert_contains "$out" "state: unknown" "ambiguous agent liveness must not become a false failure"
+  assert_contains "$out" "source: exit-record" "the ambiguous verdict must preserve the recorded exit evidence"
+  "$ROOT/bin/fm-busy-event.sh" apply "$d/state" feat-exitstalebusy busy --gen "$gen" \
+    --source claude-hook --event user-prompt-submit
+  out=$(run_crew_state "$d" feat-exitstalebusy)
+  assert_contains "$out" "state: working" "positive semantic busy evidence must outrank a historical exit"
+  assert_contains "$out" "source: pane" "the live busy source stays authoritative"
+  assert_not_contains "$out" "source: exit-record" "an unverified recovery classifier must not mask positive busy evidence"
+  assert_contains "$out" "signal 9" "the historical record still rides along as detail"
+  pass "semantic busy evidence outranks a stale exit when recovery liveness is unverified"
+}
+
+test_stale_grok_render_does_not_mask_a_recorded_exit() {
+  reset_fakes
+  local d; d=$(new_case exit-stale-grok)
+  make_repo_on_branch "$d/wt" fm/feat-exitstalegrok
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitstalegrok.meta" "window=fm:fm-feat-exitstalegrok" "worktree=$d/wt" "kind=ship" "harness=grok"
+  record_exit "$d/state" feat-exitstalegrok 137
+  FM_FAKE_TMUX_WINDOWS="fm-feat-exitstalegrok"
+  FM_FAKE_TMUX_CURRENT_COMMAND=bash
+  FM_FAKE_BUSY=1
+  FM_FAKE_BUSY_TEXT=Ctrl+c:cancel
+  local out; out=$(run_crew_state "$d" feat-exitstalegrok)
+  assert_contains "$out" "state: failed" "a stale Grok footer must not mask the recorded failure"
+  assert_contains "$out" "source: exit-record" "the recorded exit remains authoritative over rendered text"
+  pass "a stale Grok busy footer cannot mask a recorded abnormal exit"
+}
+
+test_unverified_secondmate_liveness_preserves_exit_without_false_failure() {
+  reset_fakes
+  local d; d=$(new_case exit-secondmate-unverified)
+  make_repo_on_branch "$d/wt" fm/feat-exitsmunverified
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "harness=codex"
+  record_exit "$d/state" mate 137
+  FM_FAKE_TMUX_WINDOWS=fm-mate
+  FM_FAKE_TMUX_CURRENT_COMMAND=unverified-agent
+  local out; out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "unverified secondmate liveness must not become a false failure"
+  assert_contains "$out" "source: exit-record" "the secondmate verdict must preserve the recorded exit"
+  assert_contains "$out" "signal 9" "the ambiguous verdict must retain the recorded signal"
+  pass "unverified secondmate liveness preserves exit evidence without claiming failure"
+}
+
+test_armed_only_record_stays_unknown() {
+  reset_fakes
+  local d; d=$(new_case exit-armed)
+  make_repo_on_branch "$d/wt" fm/feat-exitarmed
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitarmed.meta" "window=fm:fm-feat-exitarmed" "worktree=$d/wt" "kind=ship"
+  arm_exit_record "$d/state" feat-exitarmed
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exitarmed)
+  assert_contains "$out" "state: unknown" "an armed-but-silent record proves nothing about the outcome"
+  assert_contains "$out" "agent exit not recorded" "the reader says the exit was never recorded"
+  assert_not_contains "$out" "state: failed" "an absent exit is not a failure either"
+  pass "an armed-but-never-completed record stays unknown and says so"
+}
+
+test_clean_exit_record_is_not_read_as_done() {
+  reset_fakes
+  local d; d=$(new_case exit-clean)
+  make_repo_on_branch "$d/wt" fm/feat-exitclean
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitclean.meta" "window=fm:fm-feat-exitclean" "worktree=$d/wt" "kind=ship"
+  record_exit "$d/state" feat-exitclean 0
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exitclean)
+  assert_contains "$out" "state: unknown" "a clean process exit is not evidence the WORK finished"
+  assert_contains "$out" "agent exited cleanly" "the clean exit is still reported as detail"
+  assert_not_contains "$out" "state: done" "a clean process exit must never be promoted to done"
+  pass "a clean exit record is reported as detail and never promoted to done"
+}
+
+test_run_step_keeps_authority_over_the_exit_record() {
+  reset_fakes
+  local d; d=$(new_case exit-run)
+  make_repo_on_branch "$d/wt" fm/feat-exitrun
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitrun.meta" "window=fm:fm-feat-exitrun" "worktree=$d/wt" "kind=ship"
+  record_exit "$d/state" feat-exitrun 137
+  FM_FAKE_AXI_STATUS=$(run_running fm/feat-exitrun)
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exitrun)
+  assert_contains "$out" "state: working" "the run-step still owns the WORK's state"
+  assert_contains "$out" "source: run-step" "the run-step stays the source"
+  assert_contains "$out" "signal 9" "the dead driver is still visible in the same read"
+  pass "an exit record annotates an active run-step instead of overriding it"
+}
+
 test_active_run_is_authoritative
 test_active_step_liveness_surfaced
 test_active_step_quiet_surfaced_as_clue
@@ -1553,6 +1737,15 @@ test_no_run_idle_pane_paused
 test_no_run_idle_pane_custom_paused_verb
 test_no_run_idle_secondmate_resolved_event_not_state
 test_dead_window_ignores_stale_status_log
+test_dead_window_reports_recorded_abnormal_exit
+test_abnormal_exit_outranks_stale_status_log
+test_live_agent_outranks_a_stale_exit_record
+test_busy_evidence_outranks_a_stale_exit_record
+test_stale_grok_render_does_not_mask_a_recorded_exit
+test_unverified_secondmate_liveness_preserves_exit_without_false_failure
+test_armed_only_record_stays_unknown
+test_clean_exit_record_is_not_read_as_done
+test_run_step_keeps_authority_over_the_exit_record
 test_dead_window_still_reports_terminal_run_step
 test_dead_window_still_reports_active_run_step
 test_no_timeout_uses_perl_bound

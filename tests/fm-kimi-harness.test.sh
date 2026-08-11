@@ -68,8 +68,11 @@ case "${1:-}" in
       prev=$arg
     done
     if [ -n "$literal" ]; then
+      # The launch line CONTAINS Kimi's `--auto`; it no longer ends with it,
+      # because every spawn appends the agent exit recorder (fm-exit-record.sh).
+      # The brief pointer is ordinary prose and never carries the flag.
       case "$literal" in
-        *' --auto')
+        *' --auto'*)
           printf '%s\n' "$literal" >> "$FM_FAKE_LAUNCH_LOG"
           printf 'launched\n' > "$FM_FAKE_KIMI_STATE"
           ;;
@@ -177,7 +180,7 @@ EOF
 }
 
 test_kimi_launch_then_send_is_verified() {
-  local id rec out rc launch pointer brief_real meta task_tmp
+  local id rec out rc launch launch_kind pointer brief_real meta task_tmp
   id="kimi-success-z1-$$"
   task_tmp="/tmp/fm-$id"
   KIMI_RUNTIME_TASK_TMP=$task_tmp
@@ -192,9 +195,11 @@ test_kimi_launch_then_send_is_verified() {
   assert_contains "$out" "spawned $id harness=kimi" "kimi spawn did not report success"
 
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "'$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
-    || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch"
-  assert_not_contains "$launch" "--effort" "kimi launch emitted a nonexistent effort flag"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the kimi launch line carried no agent exit recorder: $launch"
+  [ "$launch_kind" = "'$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
+    || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch_kind"
+  assert_not_contains "$launch_kind" "--effort" "kimi launch emitted a nonexistent effort flag"
   assert_not_contains "$launch" "turn-ended" "kimi launch embedded a turn-end path"
   assert_not_contains "$launch" "__TURNEND__" "kimi launch retained a turn-end placeholder"
 
@@ -437,7 +442,7 @@ test_kimi_teardown_removes_pointer_and_registry_token() {
 }
 
 test_kimi_falls_back_to_expanded_home_binary() {
-  local id rec out rc launch fallback
+  local id rec out rc launch launch_kind fallback
   id=kimi-fallback-z4
   rec=$(make_spawn_case fallback "$id")
   read_spawn_record "$rec"
@@ -449,8 +454,10 @@ test_kimi_falls_back_to_expanded_home_binary() {
   rc=$?
   expect_code 0 "$rc" "Kimi HOME fallback spawn should succeed"
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "'$fallback' --auto" ] \
-    || fail "Kimi fallback did not expand HOME into an absolute executable: $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the kimi fallback launch line carried no agent exit recorder: $launch"
+  [ "$launch_kind" = "'$fallback' --auto" ] \
+    || fail "Kimi fallback did not expand HOME into an absolute executable: $launch_kind"
   pass "fm-spawn: Kimi fallback expands the active HOME"
 }
 
