@@ -22,6 +22,7 @@ Exit status:
 """
 
 import json
+import os
 import socket
 import sys
 import time
@@ -68,10 +69,19 @@ def main(argv):
     if insert_index < 0 or str(insert_index) != raw_index:
         return 2
 
+    socket_directory, socket_name = os.path.split(socket_path)
+    if not socket_name:
+        return 2
+
     try:
+        # Darwin limits AF_UNIX address strings to 104 bytes, even when the
+        # server successfully bound the same filesystem socket from a shorter
+        # relative path. Resolve the already-validated absolute parent first,
+        # then connect by basename so a long Herdr config root stays usable.
+        os.chdir(socket_directory)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(CONNECT_TIMEOUT)
-        sock.connect(socket_path)
+        sock.connect(socket_name)
     except OSError:
         return 2
 

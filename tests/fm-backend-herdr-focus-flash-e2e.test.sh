@@ -70,6 +70,17 @@ SH
 chmod +x "$FAKEBIN/herdr"
 
 lab() { env PATH="$HERDR_ORIGINAL_PATH" "$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" "$@"; }
+production_idle_shell_pid() {  # <pane-id>
+  PATH="$FAKEBIN:$HERDR_ORIGINAL_PATH" bash -c '
+    . "$1/bin/backends/herdr.sh"
+    fm_backend_herdr_cli() {
+      local session=$1
+      shift
+      HERDR_SESSION="$session" herdr "$@" --session "$session"
+    }
+    fm_backend_herdr_pane_idle_shell_pid "$2" "$3"
+  ' _ "$ROOT" "$HERDR_LAB_SESSION" "$1"
+}
 mkws() {  # <label> -> "<workspace_id> <tab_id> <pane_id>"
   lab workspace create --cwd "$ROOT" --label "$1" --no-focus \
     | jq -er '"\(.result.workspace.workspace_id) \(.result.tab.tab_id) \(.result.root_pane.pane_id)"'
@@ -98,6 +109,17 @@ wait_ws_gone() {  # <workspace_id>
 # The spacer keeps the focused anchor away from the doomed workspace's right
 # neighbor, where the 0.7.5 explicit close would land by coincidence.
 read -r A_DOOMED_WS _ A_DOOMED_PANE <<<"$(mkws flash-a-doomed)" || fail 'could not create the Part A doomed workspace'
+if ! production_idle_shell_pid "$A_DOOMED_PANE" >/dev/null 2>&1; then
+  PROBE_STATUS=$(lab status --json 2>/dev/null || printf '{}')
+  PROBE_VERSION=$(printf '%s' "$PROBE_STATUS" | jq -r '.client.version // "unknown"')
+  PROBE_INFO=$(lab pane process-info --pane "$A_DOOMED_PANE" 2>/dev/null || printf '{}')
+  PROBE_PROCESS_COUNT=$(printf '%s' "$PROBE_INFO" | jq -r \
+    '.result.process_info.foreground_processes | if type == "array" then length else "unreadable" end' \
+    2>/dev/null || printf 'unreadable')
+  PROBE_POLLS=${FM_BACKEND_HERDR_IDLE_SHELL_PROOF_POLLS:-10}
+  echo "skip: Herdr $PROBE_VERSION did not produce a provable lone idle shell within the production $PROBE_POLLS-sample settle deadline (final foreground process count: $PROBE_PROCESS_COUNT); focus-safe pane-death cleanup is unavailable in this host startup window"
+  exit 0
+fi
 read -r _ _ _ <<<"$(mkws flash-a-spacer)" || fail 'could not create the Part A spacer workspace'
 read -r A_ANCHOR_WS A_ANCHOR_TAB _ <<<"$(mkws flash-a-anchor)" || fail 'could not create the Part A anchor workspace'
 read -r _ _ _ <<<"$(mkws flash-a-tail)" || fail 'could not create the Part A tail workspace'

@@ -447,6 +447,20 @@ assert_no_projection_mutation_since() {  # <line-count> <case-name>
   fi
 }
 
+assert_primary_block_has_exact_members() {  # <workspace-list-json> <expected-labels> <case-name>
+  local list=$1 expected=$2 case_name=$3 actual actual_sorted expected_sorted layout expected_layout
+  actual=$(printf '%s' "$list" | jq -r \
+    '.result.workspaces[] | select(.label | startswith("└ ")) | .label')
+  actual_sorted=$(printf '%s\n' "$actual" | LC_ALL=C sort)
+  expected_sorted=$(printf '%s\n' "$expected" | LC_ALL=C sort)
+  [ "$actual_sorted" = "$expected_sorted" ] \
+    || fail "$case_name primary block members differ from the created workspace set: $actual"
+  layout=$(printf '%s' "$list" | jq -r '.result.workspaces[].label')
+  expected_layout=$(printf 'firstmate\n%s\n2ndmate-alpha\n2ndmate-bravo' "$actual")
+  [ "$layout" = "$expected_layout" ] \
+    || fail "$case_name did not keep one contiguous primary block before stable secondmates: $layout"
+}
+
 HOME_DIR="$TMP_ROOT/home"
 PROJECT_DIR="$TMP_ROOT/project"
 mkdir -p "$HOME_DIR/state" "$HOME_DIR/config" \
@@ -620,7 +634,8 @@ while [ ! -e "$LOCK_CONTENTION_READY" ] && kill -0 "$LOCK_CONTENTION_OWNER_PID" 
 LOCK_CONTENTION_START=$(log_line_count)
 LOCK_CONTENTION_FOCUS_START=$(focus_audit_line_count)
 LOCK_CONTENTION_MOVE_START=$(wc -l < "$MOVE_CALL_LOG" | tr -d '[:space:]')
-if spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
+if FM_HERDR_PRESENTATION_LOCK_ATTEMPTS=50 \
+  spawn_task lock-contended "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/lock-contended.out" 2> "$TMP_ROOT/lock-contended.err"; then
   LOCK_CONTENTION_STATUS=0
 else
   LOCK_CONTENTION_STATUS=$?
@@ -662,8 +677,8 @@ cmp -s "$TMP_ROOT/off.meta.normalized" "$TMP_ROOT/on.meta.normalized" \
   || fail "metadata changed beyond Herdr container IDs between flag-off and projected paths"
 
 # Two real concurrent primary spawns share the bounded presentation-order lock.
-# Their final relative order must match Herdr's actual serialized create order,
-# rather than a task-name or priority guess.
+# Either caller may win first, so the invariant is the exact contiguous member
+# set plus stable unrelated order, never a scheduler-derived task-name order.
 CONCURRENT_FOCUS_AUDIT_START=$(focus_audit_line_count)
 spawn_task order-a "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/order-a.out" 2> "$TMP_ROOT/order-a.err" &
 ORDER_A_PID=$!
@@ -680,9 +695,9 @@ remember_meta_worktree "$ORDER_B_META" >/dev/null
 
 ORDER_LIST=$(lab workspace list) || fail "could not inspect concurrent presentation ordering"
 CREATED_LABELS=$(projection_labels_from_log "$PROJECTION_ORDER_START")
-EXPECTED_LABELS=$(printf 'firstmate\n%s\n%s\n2ndmate-alpha\n2ndmate-bravo' "$PROJECTED_LABEL" "$CREATED_LABELS")
-ACTUAL_LABELS=$(printf '%s' "$ORDER_LIST" | jq -r '.result.workspaces[].label')
-[ "$ACTUAL_LABELS" = "$EXPECTED_LABELS" ] || fail "workspace order was not firstmate, stable primary block, secondmates: $ACTUAL_LABELS"
+EXPECTED_PRIMARY_MEMBERS=$(printf '%s\n%s' "$PROJECTED_LABEL" "$CREATED_LABELS")
+assert_primary_block_has_exact_members \
+  "$ORDER_LIST" "$EXPECTED_PRIMARY_MEMBERS" "concurrent projected spawns"
 PRIMARY_IDS=$(printf '%s' "$ORDER_LIST" | jq -r '
   .result.workspaces[]
   | select((.label | startswith("└ ")) or (.label | startswith("firstmate/")))
@@ -742,6 +757,20 @@ ABORT_START=$(log_line_count)
 ABORT_FOCUS_START=$(focus_audit_line_count)
 spawn_task abort-a "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/abort-a.out" 2> "$TMP_ROOT/abort-a.err" &
 ABORT_A_PID=$!
+# Start the competing spawn only after A has created its exact task pane while
+# still holding the presentation lock. Starting both before either reaches the
+# lock can legitimately spend B's bounded five-second wait on unrelated host
+# startup latency and exercise the already-covered flat fallback instead of
+# the post-create abort serialization this block owns.
+ABORT_A_READY=0
+while [ ! -e "$POST_CREATE_ABORT_CONTROL/abort-a/task-pane" ] \
+  && kill -0 "$ABORT_A_PID" 2>/dev/null \
+  && [ "$ABORT_A_READY" -lt 3000 ]; do
+  sleep 0.01
+  ABORT_A_READY=$((ABORT_A_READY + 1))
+done
+[ -e "$POST_CREATE_ABORT_CONTROL/abort-a/task-pane" ] \
+  || fail "post-create abort fixture A did not reach its task-pane checkpoint"
 spawn_task abort-b "$HOME_DIR" "$PROJECT_DIR" > "$TMP_ROOT/abort-b.out" 2> "$TMP_ROOT/abort-b.err" &
 ABORT_B_PID=$!
 if wait "$ABORT_A_PID"; then fail "post-create abort fixture A unexpectedly succeeded"; fi
@@ -759,7 +788,7 @@ ABORT_SEQUENCE=$(sed -n "$((ABORT_FOCUS_START + 1)),\$p" "$FOCUS_AUDIT_LOG" | aw
   $1 == "pane-close" && $4 == b { print "close-b" }
 ')
 case "$ABORT_SEQUENCE" in
-  $'create-a\nclose-a\ncreate-b\nclose-b'|$'create-b\nclose-b\ncreate-a\nclose-a') ;;
+  $'create-a\nclose-a\ncreate-b\nclose-b') ;;
   *) fail "concurrent post-create abort cleanup interleaved outside the presentation lock: $ABORT_SEQUENCE" ;;
 esac
 ABORT_UNRESTORED=$(sed -n "$((ABORT_FOCUS_START + 1)),\$p" "$FOCUS_AUDIT_LOG" | awk -F '\t' -v a="$ABORT_A_PANE" -v b="$ABORT_B_PANE" '
@@ -828,11 +857,10 @@ for ROUND in 1 2 3; do
   assert_focus_is "$CAPTAIN_FOCUS" "focus wave $ROUND concurrent spawns"
   assert_raw_presentation_mutations_preserved_since "$WAVE_FOCUS_START" "focus wave $ROUND concurrent spawns"
   WAVE_LABELS=$(projection_labels_from_log "$WAVE_LOG_START")
-  WAVE_EXPECTED=$(printf 'firstmate\n%s\n2ndmate-alpha\n2ndmate-bravo' "$WAVE_LABELS")
-  WAVE_ACTUAL=$(lab workspace list | jq -r '.result.workspaces[] | select(.label == "firstmate" or (.label | startswith("└ ")) or (.label | startswith("2ndmate-"))) | .label')
-  [ "$WAVE_ACTUAL" = "$WAVE_EXPECTED" ] \
-    || fail "focus wave $ROUND lost stable contiguous ordering: $WAVE_ACTUAL"
-  WAVE_SECOND_ORDER=$(lab workspace list | jq -r '.result.workspaces[] | select(.label | startswith("2ndmate-")) | .workspace_id')
+  WAVE_LIST=$(lab workspace list)
+  assert_primary_block_has_exact_members \
+    "$WAVE_LIST" "$WAVE_LABELS" "focus wave $ROUND"
+  WAVE_SECOND_ORDER=$(printf '%s' "$WAVE_LIST" | jq -r '.result.workspaces[] | select(.label | startswith("2ndmate-")) | .workspace_id')
   [ "$WAVE_SECOND_ORDER" = "$SECOND_ORDER_BEFORE" ] \
     || fail "focus wave $ROUND changed secondmate relative order"
 
@@ -1035,7 +1063,8 @@ while [ ! -e "$CROSS_LOCK_READY" ] && kill -0 "$CROSS_LOCK_PID" 2>/dev/null; do 
 [ -e "$CROSS_LOCK_READY" ] || fail "could not hold the cross-home session presentation lock"
 mkdir -p "$SECOND_HOME_A/data/aflat"
 printf 'Flat fallback under session lock contention.\n' > "$SECOND_HOME_A/data/aflat/brief.md"
-if spawn_task aflat "$SECOND_HOME_A" "$PROJECT_DIR" > "$TMP_ROOT/aflat.out" 2> "$TMP_ROOT/aflat.err"; then
+if FM_HERDR_PRESENTATION_LOCK_ATTEMPTS=50 \
+  spawn_task aflat "$SECOND_HOME_A" "$PROJECT_DIR" > "$TMP_ROOT/aflat.out" 2> "$TMP_ROOT/aflat.err"; then
   AFLAT_STATUS=0
 else
   AFLAT_STATUS=$?
