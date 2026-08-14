@@ -266,14 +266,6 @@
       "audience": "operator-current"
     },
     {
-      "path": "docs/host-test-failures-implementation.md",
-      "audience": "maintainer-verification"
-    },
-    {
-      "path": "docs/host-test-failures-plan.md",
-      "audience": "maintainer-verification"
-    },
-    {
       "path": "docs/linear-backend.md",
       "audience": "operator-current"
     },
