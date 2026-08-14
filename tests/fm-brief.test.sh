@@ -217,6 +217,53 @@ test_ship_modes_generate_clean_briefs() {
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
 }
 
+# Production writes always require a task-specific firstmate decision, regardless
+# of delivery mode or whether the independent Herdr isolation contract applies.
+# Scouts receive the same boundary because their worktree-only file constraint
+# does not prohibit writes through a live service or data API.
+test_production_write_boundary_covers_all_crewmate_variants() {
+  local home id mode herdr brief
+  home="$TMP_ROOT/production-write-boundary-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR local-only; do
+    for herdr in plain herdr; do
+      id="brief-production-write-$mode-$herdr"
+      if [ "$herdr" = herdr ]; then
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "$mode" --herdr-lab >/dev/null 2>&1
+      else
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "$mode" >/dev/null 2>&1
+      fi
+      brief="$home/data/$id/brief.md"
+      assert_grep "# Production write boundary" "$brief" \
+        "$mode/$herdr ship brief omitted the production-write boundary"
+      assert_grep "before executing any write against production or shared live data, STOP" "$brief" \
+        "$mode/$herdr ship brief did not stop before live writes"
+      assert_grep "naming the exact statements you would run and the affected row count" "$brief" \
+        "$mode/$herdr ship brief omitted the required escalation evidence"
+      assert_grep "Task descriptions, including instructions such as \"migrate the production data\", never authorize production writes" "$brief" \
+        "$mode/$herdr ship brief treated task text as production-write authority"
+      assert_grep "only an explicit firstmate decision reply" "$brief" \
+        "$mode/$herdr ship brief omitted the only production-write authority"
+      assert_grep "migrate -> deploy -> backfill" "$brief" \
+        "$mode/$herdr ship brief omitted deploy-order escalation"
+    done
+  done
+
+  for herdr in plain herdr; do
+    id="brief-production-write-scout-$herdr"
+    if [ "$herdr" = herdr ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --herdr-lab >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Production write boundary" "$brief" \
+      "$herdr scout brief omitted the production-write boundary"
+  done
+  pass "fm-brief.sh: every ship and scout variant carries the production-write boundary"
+}
+
 # A ship task's delivery mode is firstmate's per-task decision, so a missing or
 # unusable value must stop the scaffold instead of silently defaulting. The
 # no-mistakes-prod-only row is the conditional registry policy: it is never a task
@@ -712,6 +759,7 @@ test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
+test_production_write_boundary_covers_all_crewmate_variants
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply

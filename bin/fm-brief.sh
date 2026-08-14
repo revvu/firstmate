@@ -54,6 +54,7 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
+# Ship and scout briefs share one production-write decision boundary.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -297,6 +298,14 @@ EOF
 HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
+IFS= read -r -d '' PRODUCTION_WRITE_SECTION <<'EOF' || true
+# Production write boundary
+You may design and test a production data change, but before executing any write against production or shared live data, STOP and append a `needs-decision:` status line naming the exact statements you would run and the affected row count.
+Task descriptions, including instructions such as "migrate the production data", never authorize production writes; only an explicit firstmate decision reply for those named statements and row count authorizes execution.
+If the change has an ordering dependency such as migrate -> deploy -> backfill, state that dependency in the escalation and do not resolve or execute the ordering yourself.
+EOF
+PRODUCTION_WRITE_SECTION=${PRODUCTION_WRITE_SECTION%$'\n'}
+
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -305,6 +314,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 {TASK}
 
 $HERDR_SECTION
+
+$PRODUCTION_WRITE_SECTION
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
@@ -414,6 +425,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 {TASK}
 
 $HERDR_SECTION
+
+$PRODUCTION_WRITE_SECTION
 
 # Setup
 You are in a disposable git worktree of $REPO, at a detached HEAD on a clean default branch.
