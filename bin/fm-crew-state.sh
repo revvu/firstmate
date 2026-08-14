@@ -183,6 +183,15 @@ emit_with_exit() {  # <state> <source> [detail]
   emit "$1" "$2" "$detail"
 }
 
+# A matching run owns the WORK's state even when its driver process exited. Every
+# output inside the run-backed branch uses this emitter so the separate process
+# fact is carried as detail without replacing the run or CI-ready verdict.
+emit_run_authoritative() {  # <state> <source> [detail]
+  local detail=${3:-}
+  detail=$(detail_with_exit "$detail")
+  emit "$1" "$2" "$detail"
+}
+
 # --- status log ------------------------------------------------------------
 
 # Last non-empty status line, and its leading verb (the word before the colon).
@@ -750,7 +759,7 @@ if [ "$HAVE_RUN" = 1 ]; then
 
   if [ "$RUN_STATE" = working ] && log_reports_ci_ready; then
     if [ "$RUN_SOURCE" = coarse ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit_run_authoritative "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
     fi
     [ -n "$CI_STEP_STATUS" ] || CI_STEP_STATUS=$(nm_effective_ci_step_status)
     if [ "$RUN_STATUS" = fixing ]; then
@@ -761,7 +770,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       CI_LOG_STATE=not-ready
     fi
     if [ "$CI_LOG_STATE" != not-ready ]; then
-      emit "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
+      emit_run_authoritative "done" status-log "$(status_line_note "$LOG_LINE")${SEP}run still monitoring PR"
     fi
   fi
 
@@ -780,15 +789,7 @@ if [ "$HAVE_RUN" = 1 ]; then
       ;;
   esac
 
-  # The run-step stays authoritative for the WORK's state; a recorded abnormal
-  # exit is a separate fact about the agent PROCESS and rides along as detail, so
-  # "the pipeline is still running but its driver died" is visible in one read
-  # instead of requiring a second investigation.
-  if [ "$EXIT_DISPOSITION" = recorded-abnormal ]; then
-    RUN_DETAIL="$RUN_DETAIL${SEP}$EXIT_DETAIL"
-  fi
-
-  emit "$RUN_STATE" run-step "$RUN_DETAIL"
+  emit_run_authoritative "$RUN_STATE" run-step "$RUN_DETAIL"
 fi
 
 # --- fallback: no run attributed to this crew ------------------------------
