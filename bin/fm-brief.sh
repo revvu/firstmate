@@ -54,7 +54,8 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
-# Ship and scout briefs share one production-write decision boundary.
+# Ship and scout briefs require an explicit firstmate decision for named statements
+# and row count before any production or shared-live-data write; task text is never authority.
 # Refuses to overwrite an existing brief.
 set -eu
 
