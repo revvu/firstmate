@@ -562,11 +562,13 @@ test_ci_ready_done_log_beats_monitoring_run() {
   make_fakebin "$d" >/dev/null
   fm_write_meta "$d/state/feat-ci.meta" "window=fm:fm-feat-ci" "worktree=$d/wt" "kind=ship"
   printf 'done: PR https://github.com/o/r/pull/2 checks green\n' > "$d/state/feat-ci.status"
+  record_exit "$d/state" feat-ci 137
   FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-ci)"
   local out; out=$(run_crew_state "$d" feat-ci)
   assert_contains "$out" "state: done" "ci-ready status log -> done"
   assert_contains "$out" "source: status-log" "ci-ready state comes from the status log"
   assert_contains "$out" "checks green" "ci-ready detail preserves the report"
+  assert_contains "$out" "signal 9" "ci-ready detail preserves the recorded agent exit"
   assert_not_contains "$out" "state: working" "ci-ready is not hidden by monitoring run"
   pass "ci-ready status log beats monitoring run"
 }
@@ -860,6 +862,7 @@ test_coarse_run_does_not_probe_other_branch_ci_log_for_ready_status() {
   make_fakebin "$d" >/dev/null
   fm_write_meta "$d/state/feat-coarseready.meta" "window=fm:fm-feat-coarseready" "worktree=$d/wt" "kind=ship"
   printf 'done: PR https://github.com/o/r/pull/4 checks green\n' > "$d/state/feat-coarseready.status"
+  record_exit "$d/state" feat-coarseready 143
   FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/other-crew)"
   FM_FAKE_RUNS_LIST="$(cat <<EOF
   running    fm/other-crew aaaaaaa  2026-07-02 22:10
@@ -870,6 +873,7 @@ EOF
   local out; out=$(run_crew_state "$d" feat-coarseready)
   assert_contains "$out" "state: done" "coarse ready status -> done"
   assert_contains "$out" "source: status-log" "coarse ready status remains status-log sourced"
+  assert_contains "$out" "signal 15" "coarse ready detail preserves the recorded agent exit"
   assert_not_contains "$out" "state: working" "coarse ready status must not be suppressed by another branch log"
   pass "coarse run does not probe another branch's ci log"
 }
@@ -1664,6 +1668,22 @@ test_armed_only_record_stays_unknown() {
   pass "an armed-but-never-completed record stays unknown and says so"
 }
 
+test_corrupt_exit_record_stays_unknown() {
+  reset_fakes
+  local d; d=$(new_case exit-corrupt)
+  make_repo_on_branch "$d/wt" fm/feat-exitcorrupt
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exitcorrupt.meta" "window=fm:fm-feat-exitcorrupt" "worktree=$d/wt" "kind=ship"
+  printf 'v=1\nid=feat-exitcorrupt\nexit_status=0\nexit_disposition=abnormal\n' > "$d/state/feat-exitcorrupt.exit"
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exitcorrupt)
+  assert_contains "$out" "state: unknown" "a corrupt exit record proves no current work state"
+  assert_contains "$out" "agent exit record unreadable" "the corrupt record remains visible as unknown detail"
+  assert_not_contains "$out" "agent exited cleanly" "a corrupt record must never be read as a clean exit"
+  assert_not_contains "$out" "state: done" "a corrupt record must never be promoted to done"
+  pass "a corrupt exit record stays unknown and never reads as clean"
+}
+
 test_clean_exit_record_is_not_read_as_done() {
   reset_fakes
   local d; d=$(new_case exit-clean)
@@ -1744,6 +1764,7 @@ test_busy_evidence_outranks_a_stale_exit_record
 test_stale_grok_render_does_not_mask_a_recorded_exit
 test_unverified_secondmate_liveness_preserves_exit_without_false_failure
 test_armed_only_record_stays_unknown
+test_corrupt_exit_record_stays_unknown
 test_clean_exit_record_is_not_read_as_done
 test_run_step_keeps_authority_over_the_exit_record
 test_dead_window_still_reports_terminal_run_step
