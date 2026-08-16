@@ -645,6 +645,22 @@ test_heartbeat_scan_dedup() {
   pass "catch-all scan escalates a missed terminal once, not twice"
 }
 
+test_heartbeat_scan_defaults_unreadable_file_age_to_due() {
+  local dir state out
+  dir=$(make_supercase scan-unreadable-age)
+  state="$dir/state"
+  printf 'done: ready\n' > "$state/unreadable-age.status"
+
+  out=$(
+    _stat_file_mtime() { printf 'unreadable'; }
+    FM_STATE_OVERRIDE="$state" housekeeping "$state"
+  2>&1)
+
+  assert_not_contains "$out" "integer expected" "an unreadable heartbeat marker age reached an integer comparison"
+  [ -s "$state/.subsuper-escalations" ] || fail "an unreadable heartbeat marker age was not safely treated as due"
+  pass "catch-all scan safely treats an unreadable marker age as due"
+}
+
 test_handle_wake_routes_self_and_escalate() {
   local dir state
   dir=$(make_supercase handle)
@@ -1858,6 +1874,7 @@ test_housekeeping_orca_persistent_stale_resolves_terminal
 test_escalate_batches_into_one_digest
 test_escalate_batch_age_uses_first_append
 test_heartbeat_scan_dedup
+test_heartbeat_scan_defaults_unreadable_file_age_to_due
 test_handle_wake_routes_self_and_escalate
 test_inject_skip_forces_self
 test_is_wake_reason_distinguishes_status_stdout

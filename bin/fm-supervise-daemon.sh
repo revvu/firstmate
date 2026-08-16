@@ -235,10 +235,23 @@ else
   _stat_file_mtime() { stat -c %Y "$1" 2>/dev/null; }
 fi
 _now() { date +%s; }
+_age_since_epoch() {  # <epoch> -> seconds elapsed; very large if empty or invalid
+  local epoch=${1:-} now
+  now=$(_now 2>/dev/null) || now=
+  case "$epoch:$now" in
+    *[!0-9:]*|:*|*:) printf '999999\n'; return ;;
+  esac
+  printf '%s\n' "$((now - epoch))"
+}
 _file_age() {  # seconds since mtime; very large if missing
   local f=$1 m
-  m=$(_stat_file_mtime "$f") || { echo 999999; return; }
-  echo $(( $(_now) - m ))
+  m=$(_stat_file_mtime "$f") || m=
+  _age_since_epoch "$m"
+}
+_epoch_file_age() {  # seconds since persisted epoch; very large if missing or invalid
+  local epoch
+  epoch=$(cat "$1" 2>/dev/null) || epoch=
+  _age_since_epoch "$epoch"
 }
 
 _hash_text() {
@@ -935,11 +948,7 @@ _oldest_line_age() {  # <buf> -> seconds since the oldest buffered item first ar
   local f=$1 since
   [ -s "$f" ] || { echo 999999; return; }
   since="${f}.since"
-  if [ -r "$since" ]; then
-    echo $(( $(_now) - $(cat "$since" 2>/dev/null || echo 0) ))
-  else
-    echo 999999
-  fi
+  _epoch_file_age "$since"
 }
 
 # --- housekeeping (runs every tick while the watcher is mid-cycle) ----------
@@ -957,8 +966,7 @@ _oldest_line_age() {  # <buf> -> seconds since the oldest buffered item first ar
 #  3) heartbeat scan: every HEARTBEAT_SCAN_SECS, grep state/*.status for a
 #     captain-relevant line the per-wake classifier missed and escalate it.
 housekeeping() {  # <state>
-  local state=$1 now due f key task win marker age last max_defer oldest pause_secs
-  now=$(_now)
+  local state=$1 due f key task win marker age last max_defer oldest pause_secs
   migrate_watcher_pause_markers "$state"
 
   # (1) batch flush
@@ -1008,7 +1016,7 @@ housekeeping() {  # <state>
       reconcile_pause_tracking "$win" "$state" "$last"
       continue
     fi
-    age=$(( now - $(cat "$marker" 2>/dev/null || echo "$now") ))
+    age=$(_epoch_file_age "$marker")
     [ "$age" -ge "${FM_STALE_ESCALATE_SECS:-$STALE_ESCALATE_SECS_DEFAULT}" ] || continue
     stale_window_is_busy "$win" "$state"
     case "$?" in
@@ -1039,7 +1047,7 @@ housekeeping() {  # <state>
       reconcile_pause_tracking "$win" "$state" "$last"
       continue
     fi
-    age=$(( now - $(cat "$marker" 2>/dev/null || echo "$now") ))
+    age=$(_epoch_file_age "$marker")
     [ "$age" -ge "$pause_secs" ] || continue
     stale_window_is_busy "$win" "$state"
     case "$?" in
