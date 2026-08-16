@@ -21,6 +21,12 @@ cleanup_kimi_harness() {
 }
 trap cleanup_kimi_harness EXIT
 
+if ! "$PYTHON_BIN" -c 'import tomllib' >/dev/null 2>&1; then
+  PYTHON_VERSION=$("$PYTHON_BIN" --version 2>&1 || printf 'version unknown')
+  echo "skip: default python3 is $PYTHON_VERSION without tomllib; Kimi hook tests require python3 with tomllib (Python 3.11+)"
+  exit 0
+fi
+
 make_spawn_fakebin() {
   local dir=$1 fakebin
   fakebin=$(fm_fakebin "$dir")
