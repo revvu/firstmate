@@ -50,8 +50,8 @@ Comments posted to Linear are sparse, terse, and factual: at most one comment pe
 
 ## Captain decision holds
 
-`bin/fm-decision-hold.sh` keeps its local structured mechanics unchanged under every backend value, so compatible `tasks-axi` remains required and the local hold stays the load-bearing record that teardown's completion gate verifies.
-While this backend is selected and the origin task records a `linear=` link, `hold` additionally mirrors each distinct keyed decision to the linked issue as the shared `captain-call` label plus one deduplicated comment stating the decision needed, and `resolve` posts the recorded decision and clears the label.
+`bin/fm-captain-hold.sh` owns the local structured captain-hold mechanics under every backend value (with `bin/fm-decision-hold.sh` remaining a one-release compatibility shim), so compatible `tasks-axi` remains required and the local hold stays the load-bearing record that teardown's completion gate verifies.
+While this backend is selected and the origin task (or held task) records a `linear=` link, `hold` additionally mirrors each captain call to the linked issue as the shared `captain-call` label plus one deduplicated comment stating the decision needed, and `answer`/`resolve` posts the recorded decision and clears the label.
 The lifecycle mirror passes the decision key through `resolve --key`, so distinct holds with identical decision text remain distinct milestones; direct captain use may omit `--key` to deduplicate on the decision text alone.
 The label is kept when other recorded holds on the same origin are still awaiting the captain, mirroring the issue's overall needs-a-decision state.
 The mirror reads the origin's live task metadata, so a hold or resolve recorded after that task's cleanup skips the mirror; a failed mirror warns with the exact retry command and never fails the local mechanics.
