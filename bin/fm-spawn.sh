@@ -3783,8 +3783,50 @@ esac
 # Forward firstmate's own resolved store onto the claude launch so the crewmate
 # uses the same credential/config firstmate is authenticated with. Only when set;
 # an unset value is the single-store default and needs no prefix.
-if [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
-  LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
+#
+# Multi-account (claude-swap): when FM_CLAUDE_CSWAP_SLOT is set, or when
+# config/claude-cswap-auto is present and harness is claude, wrap the launch
+# through `cswap run <slot> -- <claude-args>` so the crewmate uses that slot's
+# session profile without changing the captain's default login. Skip forwarding
+# CLAUDE_CONFIG_DIR in that case — cswap owns it. See docs/multi-account-quota.md
+# and the claude-account-dispatch skill.
+if [ "$HARNESS" = claude ]; then
+  CSWAP_SLOT=${FM_CLAUDE_CSWAP_SLOT:-}
+  if [ -z "$CSWAP_SLOT" ] && [ -f "$FM_HOME/config/claude-cswap-auto" ]; then
+    cswap_need=general
+    case "${MODEL:-}" in
+      *fable*|*Fable*) cswap_need=fable ;;
+    esac
+    if CSWAP_PICK=$("$FM_ROOT/bin/fm-cswap-pick.sh" --need "$cswap_need" --json 2>/dev/null); then
+      CSWAP_SLOT=$(printf '%s' "$CSWAP_PICK" | python3 -c 'import json,sys; print(json.load(sys.stdin)["slot"])' 2>/dev/null || true)
+      if [ -n "$CSWAP_SLOT" ]; then
+        echo "info: claude-cswap-auto selected slot=$CSWAP_SLOT need=$cswap_need" >&2
+      fi
+    else
+      echo "warning: claude-cswap-auto enabled but fm-cswap-pick.sh could not pick a slot; launching bare claude" >&2
+    fi
+  fi
+  if [ -n "$CSWAP_SLOT" ]; then
+    if ! command -v cswap >/dev/null 2>&1; then
+      echo "error: FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT set but cswap is not on PATH" >&2
+      exit 1
+    fi
+    # Template is: ENV_ASSIGNS claude CLAUDE_ARGS...
+    # cswap run execs `claude` itself; args after -- are Claude Code flags only.
+    case "$LAUNCH" in
+      *" claude "*)
+        LAUNCH=${LAUNCH/ claude / cswap run ${CSWAP_SLOT} -- }
+        ;;
+      *)
+        echo "error: cannot wrap unexpected claude launch for cswap slot $CSWAP_SLOT" >&2
+        exit 1
+        ;;
+    esac
+    # Record for meta/debug; do not also forward CLAUDE_CONFIG_DIR.
+    FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT
+  elif [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+    LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
+  fi
 fi
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")

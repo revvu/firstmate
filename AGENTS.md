@@ -220,6 +220,7 @@ When every candidate is tight, preserve the captain's strongest-reasoning class 
 Break genuine evidence ties without array-order or harness bias.
 `quota-axi` owns how model or product windows relate to bounding account windows and remains data-only.
 Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the TOON-first spendPriority selection procedure.
+When the resolved harness is `claude` and this home has `config/claude-cswap-auto` (or the captain set `FM_CLAUDE_CSWAP_SLOT`), load `claude-account-dispatch` so the crewmate lands on a healthy claude-swap slot rather than always the active login.
 The generic effort fallback and its precedence are owned by `harness-adapters`: explicit captain and standing configured effort win; otherwise use low for well-understood explicit work, xhigh for ambiguous investigation or design, intermediate levels proportionally, and never max without explicit captain preference.
 Do not add model-specific versions of that policy.
 
@@ -568,6 +569,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
 - `ask-user-authority` - load before deciding any ask-user finding.
 - `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from current quota-axi default TOON.
+- `claude-account-dispatch` - load before spawning `harness=claude` when `config/claude-cswap-auto` is on or `FM_CLAUDE_CSWAP_SLOT` is set, and when choosing among claude-swap accounts; owner of slot pick via `bin/fm-cswap-pick.sh`, not of harness routing.
 - `plan-to-fleet` - load when leaving Explore/planning for Execute: locked Lavish or prose plan ready to parallelize, `/plan-to-fleet`, or assigning harness/model/effort per slice before multi-crewmate spawn from one plan; owner of the fleet map, not of dispatch mechanics.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.

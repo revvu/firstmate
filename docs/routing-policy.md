@@ -60,10 +60,12 @@ Quality: `no-mistakes` local gate, then CodeRabbit on the PR.
 ## Claude accounts + quota
 
 `quota-axi` sees the **active** Claude account plus Codex + Cursor.
-`claude-swap` (`cswap`) owns the multi-account inventory and per-slot usage cache under its data dir (`cache/usage.json`).
+`claude-swap` owns the multi-account inventory (`cache/usage.json`).
 
-Today First Mate does **not** auto-pick Claude slot 1 vs 2 vs 4. See options in the captain conversation / `docs/multi-account-quota.md` when present.
-Standing practice until that lands: keep `cswap auto` on the primary; prefer Cursor/Codex for Execute so Claude accounts stay available for Fable judgment; use `cswap run <n>` or mapped secondmates for parallel Claude when needed.
+**Execute:** with `config/claude-cswap-auto` on, Claude crewmates auto-pick a healthy slot via `bin/fm-cswap-pick.sh` and launch through `cswap run` (see `docs/multi-account-quota.md`).
+
+**Explore:** not fleet-routed. Global policy in `~/github/dotfiles/home/global-agents.md` tells the judgment model to keep questions here and delegate mechanical Lavish/Paper fan-out to Cursor via `agent -p`.
+
 
 ## Weekly matrix edit checklist
 
