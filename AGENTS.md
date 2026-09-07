@@ -275,6 +275,9 @@ When the captain invokes `/stow`, load the `stow` skill for its memory curation,
 
 The delivery lifecycle is an always-loaded operational contract; referenced scripts own exact commands, flags, and data mechanics.
 
+Standing Explore vs Execute routing for this fork lives in [`docs/routing-policy.md`](docs/routing-policy.md).
+When a Lavish or prose plan is locked and the captain is ready to parallelize into an implementation fleet, load `plan-to-fleet` before spawning multiple crewmates from that plan.
+
 ### Intake and authority
 
 Resolve the project independently for every request.
@@ -565,6 +568,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
 - `ask-user-authority` - load before deciding any ask-user finding.
 - `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from current quota-axi default TOON.
+- `plan-to-fleet` - load when leaving Explore/planning for Execute: locked Lavish or prose plan ready to parallelize, `/plan-to-fleet`, or assigning harness/model/effort per slice before multi-crewmate spawn from one plan; owner of the fleet map, not of dispatch mechanics.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
 - `project-management` - load before adding, creating, removing, or initializing a project.

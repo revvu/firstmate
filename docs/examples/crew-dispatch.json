@@ -1,26 +1,74 @@
 {
   "rules": [
     {
-      "when": "The task depends on fresh news, current events, live public facts, or recent market and product changes.",
-      "use": { "harness": "grok" },
-      "why": "Grok is the preferred dispatch when current web-connected context is central to the work."
-    },
-    {
-      "when": "The task is a trivial mechanical edit such as a rote rename, formatting sweep, targeted typo fix, or simple file gathering.",
-      "use": { "harness": "claude", "model": "haiku", "effort": "low" },
-      "why": "Use the cheapest fast profile when the task is narrow and low ambiguity."
-    },
-    {
-      "when": "The task is a big or ambiguous multi-file feature, a risky refactor, or work that requires holding many moving parts in mind.",
+      "when": "The task is design, architecture, product framing, or asking the captain clarifying questions: system shape, API boundaries, tradeoff analysis, Lavish planning judgment, or Explore-mode hard questions. Not bulk implementation.",
       "use": [
-        { "harness": "claude", "model": "claude-sonnet-5", "effort": "high" },
-        { "harness": "codex", "model": "gpt-5.5", "effort": "high" }
+        { "harness": "claude", "model": "fable", "effort": "high" },
+        { "harness": "claude", "effort": "high" }
       ],
-      "why": "Use a strong coding profile for big, ambiguous work; resolve the alternatives through quota-array-dispatch."
+      "why": "Fable owns judgment, design, and architecture. Do not burn Cursor/Codex as the first pick for open design decisions."
+    },
+    {
+      "when": "The task is frontend taste or layout cleanup: polish visual hierarchy, spacing, brand feel, or converge after exploratory UI variants. Not a bulk fan-out of many rough options.",
+      "use": [
+        { "harness": "claude", "model": "fable", "effort": "high" },
+        { "harness": "claude", "effort": "high" }
+      ],
+      "why": "Fable owns taste/layout convergence after faster models generate options."
+    },
+    {
+      "when": "The task is exploratory UI or Paper fan-out: generate several rough variants or surfaces quickly so the captain can compare, not a final taste pass.",
+      "use": [
+        { "harness": "cursor" },
+        { "harness": "codex", "effort": "medium" }
+      ],
+      "why": "Speed-class fan-out. Cursor first (no effort flag on Cursor); Codex next. Save Fable for later convergence."
+    },
+    {
+      "when": "The task is a chore: docs, CI hygiene, Linear hygiene, renames, formatting, dependency bumps, or other low-ambiguity housekeeping.",
+      "use": [
+        { "harness": "cursor" },
+        { "harness": "codex", "effort": "low" }
+      ],
+      "why": "Fastest cheap path. Cursor first; Codex fallback."
+    },
+    {
+      "when": "The task is a trivial mechanical edit: targeted typo, one-file fix, rote rename, or similarly narrow low-ambiguity coding.",
+      "use": [
+        { "harness": "cursor" },
+        { "harness": "codex", "effort": "low" }
+      ],
+      "why": "Speed class. Cursor first."
+    },
+    {
+      "when": "The task is adversarial review, no-mistakes review, or a second-opinion pass on code another model authored.",
+      "use": [
+        { "harness": "codex", "effort": "high" },
+        { "harness": "claude", "effort": "high" }
+      ],
+      "why": "Prefer a different family than the author. Codex is the standing review default; Claude only if Codex is tight."
+    },
+    {
+      "when": "The task is a big or ambiguous multi-file feature or risky refactor where architecture is already decided and the work is primarily implementation with remaining technical ambiguity.",
+      "use": [
+        { "harness": "codex", "effort": "high" },
+        { "harness": "cursor" },
+        { "harness": "claude", "effort": "high" }
+      ],
+      "why": "Codex is the mid/frontier implementer (smarter than pure speed, faster than Fable). Cursor second. Claude last to conserve Fable/Claude quota."
+    },
+    {
+      "when": "The task is an ordinary ship: feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity.",
+      "use": [
+        { "harness": "cursor" },
+        { "harness": "codex", "effort": "medium" }
+      ],
+      "why": "Default implementation path. Cursor for speed; Codex when Cursor headroom is tight or the slice needs more frontier punch."
     }
   ],
   "default": [
-    { "harness": "codex", "model": "gpt-5.5", "effort": "medium" },
-    { "harness": "pi", "model": "anthropic/claude-sonnet-5", "effort": "medium" }
+    { "harness": "cursor" },
+    { "harness": "codex", "effort": "medium" },
+    { "harness": "claude", "effort": "medium" }
   ]
 }
