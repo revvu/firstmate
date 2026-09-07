@@ -17,7 +17,7 @@ Related owners:
 |---|---|---|
 | Judgment / design | Claude **Fable** (then strong Claude) | Ask the captain hard questions; design; architecture; taste/layout converge |
 | Frontier implement | **Codex** | Smart implementation when the path is mostly decided but still needs a strong coder; adversarial review |
-| Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out |
+| Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out (Cursor has **no effort flag** — omit `effort` in dispatch; optionally pin `--model` like `composer-2.5-fast`) |
 
 **Implementers are Cursor + Codex.** Fable is not the default coder.
 
