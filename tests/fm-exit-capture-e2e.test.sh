@@ -139,6 +139,7 @@ SH
 write_brief() {  # <home> <id>
   mkdir -p "$1/data/$2"
   cat > "$1/data/$2/brief.md" <<EOF
+# Task
 ## Captain's intent
 Stand-in brief for $2.
 
