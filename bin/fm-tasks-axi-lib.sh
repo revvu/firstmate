@@ -38,12 +38,20 @@
 
 FM_TASKS_AXI_MIN=0.2.4
 
-FM_TASKS_AXI_COMPATIBLE_MEMO=${FM_TASKS_AXI_COMPATIBLE:-}
+# Sourcing must be idempotent: the memo below is the process-lifetime verdict,
+# and the handed-in FM_TASKS_AXI_COMPATIBLE is consumed on the FIRST source. A
+# later source through another lib (e.g. fm-linear-lib.sh inside fm-bootstrap.sh)
+# would find the env variable already consumed and silently erase the memo, so a
+# re-source keeps the existing state instead.
+if [ -z "${FM_TASKS_AXI_LIB_SOURCED:-}" ]; then
+  FM_TASKS_AXI_LIB_SOURCED=1
+  FM_TASKS_AXI_COMPATIBLE_MEMO=${FM_TASKS_AXI_COMPATIBLE:-}
+  case "$FM_TASKS_AXI_COMPATIBLE_MEMO" in
+    0|1) ;;
+    *) FM_TASKS_AXI_COMPATIBLE_MEMO= ;;
+  esac
+fi
 unset FM_TASKS_AXI_COMPATIBLE
-case "$FM_TASKS_AXI_COMPATIBLE_MEMO" in
-  0|1) ;;
-  *) FM_TASKS_AXI_COMPATIBLE_MEMO= ;;
-esac
 
 fm_tasks_axi_version_parts() {
   local output
