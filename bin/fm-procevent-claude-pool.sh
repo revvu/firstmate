@@ -16,8 +16,9 @@
 # The source stays registered until retire; handled acknowledgements belong to
 # firstmate. Nothing here selects a harness, starts work, or swaps credentials.
 #
-# FM_HOME selects config/claude-pool-reserve (0-100 percent remaining, default
-# 10). CLAUDE_SWAP_HOME selects the cache root (default ~/.claude-swap-backup).
+# FM_CONFIG_OVERRIDE or FM_HOME/config owns claude-pool-reserve (0-100 percent
+# remaining, default 10). CLAUDE_SWAP_HOME selects the cache root (default
+# ~/.claude-swap-backup).
 # Cache observations older than 30 minutes, failed observations, missing account
 # windows, or expired nonzero windows are unknown, never assumed available.
 # Enabled subscription slots contribute 100 - max(5h, 7d, all reported scoped
@@ -62,6 +63,7 @@ if not math.isfinite(args.interval) or args.interval <= 0:
 
 home = Path(os.environ['FM_HOME'])
 state = Path(os.environ.get('FM_STATE_OVERRIDE', home / 'state'))
+config_dir = Path(os.environ.get('FM_CONFIG_OVERRIDE', home / 'config'))
 cache = Path(os.environ.get('CLAUDE_SWAP_HOME', Path.home() / '.claude-swap-backup'))
 
 
@@ -90,7 +92,7 @@ def snapshot():
     now = time.time()
     result = {'status': 'unknown', 'observed_at': iso(now)}
     try:
-        reserve_path = home / 'config/claude-pool-reserve'
+        reserve_path = config_dir / 'claude-pool-reserve'
         reserve = percent(float(reserve_path.read_text().strip())) if reserve_path.exists() else 10
         result['reserve_percent'] = reserve
         usage = json.loads((cache / 'cache/usage.json').read_text())

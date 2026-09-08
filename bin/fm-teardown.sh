@@ -3397,7 +3397,8 @@ if [ "$KIND" != secondmate ] && [ -z "$CLEANUP_RECOVERY" ]; then
     DISPATCH_OUTCOME=cancelled
   fi
   FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-dispatch-ledger.sh" \
-    append "$META" "$STATE/$ID.status" "$DISPATCH_OUTCOME" "$PR_URL" || exit 1
+    append "$META" "$STATE/$ID.status" "$DISPATCH_OUTCOME" "$PR_URL" \
+    || echo "warning: $ID's dispatch outcome could not be appended to the ledger; retirement continues without it" >&2
 fi
 status_retire_presentation_task "$STATE" "$ID" || exit 1
 rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.exit" \

@@ -68,6 +68,15 @@ check '.status == "healthy" and .all_tight == true'
 printf '11\n' > "$FM_HOME/config/claude-pool-reserve"
 check '.status == "low"'
 rm "$FM_HOME/config/claude-pool-reserve"
+# FM_CONFIG_OVERRIDE replaces FM_HOME/config entirely: the override's reserve
+# is read and the home's reserve is not.
+printf '5\n' > "$FM_HOME/config/claude-pool-reserve"
+mkdir -p "$LAB/config-override"
+printf '11\n' > "$LAB/config-override/claude-pool-reserve"
+FM_CONFIG_OVERRIDE="$LAB/config-override" "$POOL" snapshot \
+  | jq -e '.status == "low" and .reserve_percent == 11' >/dev/null \
+  || { echo 'not ok - FM_CONFIG_OVERRIDE reserve ignored' >&2; exit 1; }
+rm "$FM_HOME/config/claude-pool-reserve"
 for case in stale failed expired invalid missing empty unknown-schema; do
   fixture "$case"
   check '.status == "unknown"'
@@ -80,7 +89,7 @@ check '.status == "exhausted" and .usable_reset == null and .nearest_reset != nu
 printf 'garbage\n' > "$FM_HOME/config/claude-pool-reserve"
 check '.status == "unknown"'
 rm "$FM_HOME/config/claude-pool-reserve"
-echo 'ok - used percentages, scoped bottlenecks, disabled/API slots, boundary, missing resets and uncertainty'
+echo 'ok - used percentages, scoped bottlenecks, disabled/API slots, boundary, reserve config override, missing resets and uncertainty'
 
 # Real captures, not a fake adapter marker: recovery is silent and a second
 # runner holds while the state is unchanged, even after handled acknowledgement.

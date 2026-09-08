@@ -13,6 +13,11 @@
 # would strand the task with no way to retire it, and the stable token keeps
 # the (task_id, spawn_gen) retry key deduplicating.
 # FM_DATA_OVERRIDE or FM_HOME/data owns dispatch-ledger.jsonl and its .lock.
+# An existing ledger that append cannot read back (a corrupt or foreign line)
+# never blocks retirement: it is quarantined aside under a timestamped
+# .corrupt- suffix - renamed, never deleted or overwritten - and a fresh ledger
+# takes the row. summarize stays strict about the live file and warns while any
+# quarantined ledger remains, so the corruption is repaired rather than silent.
 # started_at is taken from metadata, then the spawn generation timestamp; legacy
 # records without either retain null. ended_at is the retirement timestamp.
 # auto uses the last done/failed/cancelled status event, otherwise done after
@@ -54,11 +59,25 @@ def read_rows(path):
     return rows
 
 
+def quarantine(path):
+    stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    target = path.with_name(path.name + '.corrupt-' + stamp)
+    serial = 0
+    while target.exists():
+        serial += 1
+        target = path.with_name(path.name + '.corrupt-' + stamp + '.' + str(serial))
+    os.rename(path, target)
+    return target
+
+
 def main():
     data = Path(os.environ.get('FM_DATA_OVERRIDE', Path(os.environ['FM_HOME']) / 'data'))
     path = data / 'dispatch-ledger.jsonl'
     command, *args = sys.argv[1:]
     if command == 'summarize':
+        for stray in sorted(data.glob(path.name + '.corrupt-*')):
+            print('warning: dispatch ledger: quarantined corrupt ledger at ' + str(stray)
+                  + '; repair and merge or remove it by hand', file=sys.stderr)
         days = int(args[0]) if args else 7
         if len(args) > 1 or days < 1:
             raise ValueError('summarize requires positive days')
@@ -105,7 +124,14 @@ def main():
     # Stable lock inode: only the data file is replaced. Never delete the lock.
     with (data / 'dispatch-ledger.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        rows = read_rows(path)
+        try:
+            rows = read_rows(path)
+        except (OSError, ValueError):
+            quarantined = quarantine(path)
+            print('warning: dispatch ledger: unreadable ledger quarantined at ' + str(quarantined)
+                  + '; starting a fresh ledger so retirement can proceed - repair and merge or'
+                  ' remove it by hand', file=sys.stderr)
+            rows = []
         if any((r['task_id'], r['spawn_gen']) == (row['task_id'], generation) for r in rows):
             return
         fd, temporary = tempfile.mkstemp(prefix='.dispatch-ledger-', dir=data)

@@ -707,6 +707,37 @@ test_local_only_fork_remote_allows() {
   pass "local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed"
 }
 
+# The ledger append runs after teardown's destructive steps, so a corrupt line
+# in data/dispatch-ledger.jsonl must never strand the task unretirable: the
+# corrupt file is quarantined aside intact, a fresh ledger records the outcome,
+# and teardown completes.
+test_corrupt_dispatch_ledger_never_blocks_retirement() {
+  local case_dir rc quarantined
+  case_dir=$(make_case corrupt-ledger)
+  write_meta "$case_dir" local-only ship
+  wt_commit "$case_dir" "fix the thing"
+  add_fork_with_pushed_branch "$case_dir"
+  printf '{broken\n' > "$case_dir/data/dispatch-ledger.jsonl"
+  cp "$case_dir/data/dispatch-ledger.jsonl" "$case_dir/ledger-before"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "corrupt-ledger: teardown must complete despite a corrupt dispatch ledger"
+  quarantined=$(find "$case_dir/data" -name 'dispatch-ledger.jsonl.corrupt-*' | head -1)
+  [ -n "$quarantined" ] || fail "corrupt-ledger: the corrupt ledger was not quarantined"
+  cmp -s "$case_dir/ledger-before" "$quarantined" \
+    || fail "corrupt-ledger: the quarantined ledger was altered"
+  grep -qF "$quarantined" "$case_dir/stderr" \
+    || fail "corrupt-ledger: teardown did not name the quarantined path"
+  jq -se 'length == 1 and .[0].task_id == "task-x1" and .[0].outcome == "done"' \
+    "$case_dir/data/dispatch-ledger.jsonl" >/dev/null \
+    || fail "corrupt-ledger: the fresh ledger did not record the retirement outcome"
+  pass "a corrupt dispatch ledger is quarantined intact and never blocks retirement"
+}
+
 test_teardown_closes_the_backlog_item_itself() {
   local case_dir out
   case_dir=$(make_case tasks-axi-close)
@@ -3659,6 +3690,7 @@ EOF
 }
 
 test_local_only_fork_remote_allows
+test_corrupt_dispatch_ledger_never_blocks_retirement
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_local_only_truly_unpushed_refuses

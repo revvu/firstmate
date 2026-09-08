@@ -48,10 +48,21 @@ printf 'kind=ship\nharness=claude\n' > "$FM_HOME/state/oldtask.meta"
 "$LEDGER" append "$FM_HOME/state/oldtask.meta" "$STATUS" auto
 jq -se 'length == 11 and .[-1].task_id == "oldtask" and .[-1].spawn_gen == "legacy" and .[-1].started_at == null and .[-1].outcome == "done"' \
   "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" >/dev/null
+# A corrupt ledger keeps summarize strict, but must never block a teardown
+# append: the corrupt file is quarantined aside intact, a fresh ledger takes
+# the row, and summarize names the quarantined path until it is repaired.
 printf '{broken\n' >> "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"
 cp "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" "$LAB/before"
-if "$LEDGER" append "$META" "$STATUS" 'done' 2>/dev/null; then
-  echo 'not ok - corrupt ledger accepted' >&2; exit 1
+if "$LEDGER" summarize >/dev/null 2>&1; then
+  echo 'not ok - corrupt ledger summarized' >&2; exit 1
 fi
-cmp "$LAB/before" "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"
-echo 'ok - outcomes, timestamps, retry deduplication, concurrent writers, reused ids, legacy records without spawn_gen, summary and corrupt-file preservation'
+"$LEDGER" append "$META" "$STATUS" 'done' 2> "$LAB/append.err"
+QUARANTINE=$(find "$FM_DATA_OVERRIDE" -name 'dispatch-ledger.jsonl.corrupt-*' | head -1)
+[ -n "$QUARANTINE" ]
+grep -qF "$QUARANTINE" "$LAB/append.err"
+cmp "$LAB/before" "$QUARANTINE"
+jq -se 'length == 1 and .[0].task_id == "task" and .[0].spawn_gen == "new-incarnation" and .[0].outcome == "done"' \
+  "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" >/dev/null
+"$LEDGER" summarize > /dev/null 2> "$LAB/summarize.err"
+grep -qF "$QUARANTINE" "$LAB/summarize.err"
+echo 'ok - outcomes, timestamps, retry deduplication, concurrent writers, reused ids, legacy records without spawn_gen, summary and corrupt-file quarantine'
