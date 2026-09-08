@@ -50,7 +50,7 @@ jq -se 'length == 11 and .[-1].task_id == "oldtask" and .[-1].spawn_gen == "lega
   "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" >/dev/null
 printf '{broken\n' >> "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"
 cp "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" "$LAB/before"
-if "$LEDGER" append "$META" "$STATUS" done 2>/dev/null; then
+if "$LEDGER" append "$META" "$STATUS" 'done' 2>/dev/null; then
   echo 'not ok - corrupt ledger accepted' >&2; exit 1
 fi
 cmp "$LAB/before" "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"

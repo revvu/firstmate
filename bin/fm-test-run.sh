@@ -260,6 +260,7 @@ family_for_basename() {
     fm-brief.test.sh|fm-vendor-auth-probe.test.sh|\
     fm-calm-pi-extension.test.sh|fm-cd-pretool-check.test.sh|\
     fm-classify-decision-key.test.sh|\
+    fm-coauthor-guard.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
     fm-crew-state.test.sh|fm-captain-hold-lifecycle.test.sh|\
     fm-dispatch-ledger.test.sh|fm-documentation-audiences.test.sh|fm-ensure-agents-md.test.sh|\
@@ -1285,6 +1286,11 @@ families_for_changed_path() {
       ;;
     bin/fm-procevent-claude-pool.sh)
       printf '%s\n' "__script__:fm-procevent-claude-pool.test.sh"
+      ;;
+    bin/fm-coauthor-guard.sh)
+      printf '%s\n' "__script__:fm-coauthor-guard.test.sh"
+      printf '%s\n' "__script__:fm-spawn-dispatch-profile.test.sh"
+      printf '%s\n' "__script__:fm-teardown.test.sh"
       ;;
     bin/fm-dispatch-ledger.sh)
       printf '%s\n' "__script__:fm-dispatch-ledger.test.sh"
