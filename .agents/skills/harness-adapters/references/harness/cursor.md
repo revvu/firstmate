@@ -77,7 +77,7 @@ It does not fire in headless `cursor-agent -p`.
 ## Commit attribution
 
 Every generated Cursor launch carries an explicit instruction forbidding agent co-author trailers and asking the worker to remove them before committing.
-This is instruction-level enforcement, not a mechanical rejection of arbitrary commit messages.
+That instruction is defense in depth on top of the mechanical layer: every ship/scout spawn binds `../../../bin/fm-coauthor-guard.sh`'s task-private commit-msg hook to the task worktree through worktree-scoped `core.hooksPath`, which strips known agent Co-authored-by trailers before any commit lands, regardless of whether the model follows the instruction.
 On 2026-09-07, installed Cursor Agent `2026.09.02-c22c1a3` exposed no attribution option in `cursor-agent --help`.
 Its installed config schema accepts `attribution.attributeCommitsToAgent` and `attribution.attributePRsToAgent` in user configuration, while the project `.cursor/cli.json` schema accepts only permissions.
 The adapter preserves the existing user identity and config directory; it does not create a separate credential store or change shared user settings to simulate a per-launch flag.

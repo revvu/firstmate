@@ -390,6 +390,7 @@ This is not a sandbox: it cannot revoke same-user access to credential files, pr
 Regression coverage executes emitted launch commands with synthetic nonsecret values in [`tests/fm-spawn-dispatch-profile.test.sh`](../tests/fm-spawn-dispatch-profile.test.sh).
 
 Every claude launch's inline `--settings` JSON also carries `"attribution":{"commit":"","pr":"","sessionUrl":false}`, so a spawned worker never writes a Co-Authored-By trailer, Claude-Session link, or generated-with line into a commit or PR body regardless of which settings scopes end up loaded.
+Independent of any harness's own attribution controls, every ship/scout spawn binds `bin/fm-coauthor-guard.sh`'s task-private commit-msg hook to the task worktree through worktree-scoped `core.hooksPath` (`extensions.worktreeConfig`): it mechanically strips known agent Co-authored-by trailers before a commit lands, chains the project's own previously effective hooks, never touches the shared `.git/hooks` or any tracked file, and is unbound by teardown before a pooled worktree is returned.
 
 ## Crew dispatch profiles (config/crew-dispatch.json)
 

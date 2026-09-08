@@ -3254,6 +3254,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
     rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
       "$WT/.opencode/plugins/fm-busy-state.js" \
       "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+    "$SCRIPT_DIR/fm-coauthor-guard.sh" remove "$WT" || true
   fi
   [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
@@ -3267,6 +3268,9 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   # Remove our hook file so a reused pool worktree cannot fire signals for a dead task.
   rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
     "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+  # Unbind the task-private co-author guard so the pooled worktree returns with
+  # the project's own hooks path in force (bin/fm-coauthor-guard.sh).
+  "$SCRIPT_DIR/fm-coauthor-guard.sh" remove "$WT" || true
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
   # the project. teardown_treehouse_return tolerates transient and stale git locks

@@ -7,6 +7,11 @@
 # Teardown calls append under its task metadata lock, before removing that
 # metadata. A separate POSIX file lock serializes all ledger writers. Atomic
 # replacement and fsync keep retries safe: (task_id, spawn_gen) is recorded once.
+# A record with no spawn_gen (predating the field, in a home whose backlog gate
+# never stamps one) is recorded under the stable token 'legacy' rather than
+# refused: teardown appends after its destructive steps, so a refusal here
+# would strand the task with no way to retire it, and the stable token keeps
+# the (task_id, spawn_gen) retry key deduplicating.
 # FM_DATA_OVERRIDE or FM_HOME/data owns dispatch-ledger.jsonl and its .lock.
 # started_at is taken from metadata, then the spawn generation timestamp; legacy
 # records without either retain null. ended_at is the retirement timestamp.
@@ -78,9 +83,7 @@ def main():
             meta[key] = value
     if meta.get('kind') == 'secondmate':
         return
-    generation = meta.get('spawn_gen')
-    if not generation:
-        raise ValueError('dispatch ledger requires a spawn generation')
+    generation = meta.get('spawn_gen') or 'legacy'
     if outcome == 'auto':
         outcome = 'done'
         if Path(status_path).exists():

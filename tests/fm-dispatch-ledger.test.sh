@@ -39,10 +39,19 @@ printf 'done: report ready\n' > "$STATUS"
 jq -se 'length == 10 and .[-1].outcome == "done" and .[-1].started_at == null and .[-1].kind == "scout"' \
   "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" >/dev/null
 "$LEDGER" summarize | awk -F '\t' '$2=="codex" && $6=="cancelled" && $7==8 {found=1} END {exit !found}'
+# A record with no spawn_gen (a home whose backlog gate never stamps one) must
+# still append - teardown calls this after its destructive steps, so a refusal
+# would strand the task unretirable - and must retry-dedup under the stable
+# 'legacy' token.
+printf 'kind=ship\nharness=claude\n' > "$FM_HOME/state/oldtask.meta"
+"$LEDGER" append "$FM_HOME/state/oldtask.meta" "$STATUS" auto
+"$LEDGER" append "$FM_HOME/state/oldtask.meta" "$STATUS" auto
+jq -se 'length == 11 and .[-1].task_id == "oldtask" and .[-1].spawn_gen == "legacy" and .[-1].started_at == null and .[-1].outcome == "done"' \
+  "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" >/dev/null
 printf '{broken\n' >> "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"
 cp "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl" "$LAB/before"
 if "$LEDGER" append "$META" "$STATUS" done 2>/dev/null; then
   echo 'not ok - corrupt ledger accepted' >&2; exit 1
 fi
 cmp "$LAB/before" "$FM_DATA_OVERRIDE/dispatch-ledger.jsonl"
-echo 'ok - outcomes, timestamps, retry deduplication, concurrent writers, reused ids, summary and corrupt-file preservation'
+echo 'ok - outcomes, timestamps, retry deduplication, concurrent writers, reused ids, legacy records without spawn_gen, summary and corrupt-file preservation'

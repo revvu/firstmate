@@ -296,7 +296,11 @@
 # --settings JSON, so a spawned worker never writes a Co-Authored-By trailer,
 # Claude-Session link, or generated-with line into a commit or PR body;
 # launch_template() below owns the reason it cannot come from the captain's own
-# settings.
+# settings. Independent of any harness's own attribution behavior, every
+# ship/scout spawn also binds bin/fm-coauthor-guard.sh's task-private
+# commit-msg hook to the task worktree (worktree-scoped core.hooksPath), which
+# mechanically strips known agent Co-authored-by trailers before a commit
+# lands; a failed binding refuses the spawn.
 # Publishing the record and moving this home's backlog item to In flight are one
 # step, not two: bin/fm-backlog-transition-lib.sh owns that invariant, and this
 # script performs the transition under the task's own meta lock before it reports
@@ -3156,6 +3160,24 @@ fi
 # targeted knob: TMPDIR is too broad (affects every program's temp, not just Go's).
 TASK_TMP="/tmp/fm-$ID"
 mkdir -p "$TASK_TMP/gotmp"
+
+# Mechanical no-agent-co-author enforcement for every ship/scout launch,
+# regardless of harness: bin/fm-coauthor-guard.sh binds a task-private
+# commit-msg hook to THIS worktree alone through worktree-scoped
+# core.hooksPath (extensions.worktreeConfig), stripping known agent
+# Co-authored-by trailers before any commit lands while chaining the project's
+# own previously effective hooks. The per-launch model instructions stay as
+# defense in depth; this hook is the guarantee. Nothing touches the shared
+# .git/hooks or any tracked file, fm-teardown unbinds it before a pooled
+# worktree is returned, and the hooks dir dies with the task temp root. A
+# failed install refuses the spawn: launching a worker whose commits are
+# unguarded would silently drop a required enforcement layer.
+if [ "$KIND" != secondmate ]; then
+  if ! "$FM_ROOT/bin/fm-coauthor-guard.sh" install "$WT" "$TASK_TMP/hooks"; then
+    echo "error: could not bind the agent co-author commit guard to $WT; refusing to launch a worker whose commits would be unguarded; inspect window $T" >&2
+    exit 1
+  fi
+fi
 
 # Per-harness turn-end hook where enabled: a file that touches
 # state/<id>.turn-ended when the agent finishes a turn. Worktree-resident hooks
