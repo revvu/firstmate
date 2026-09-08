@@ -2132,7 +2132,7 @@ test_linear_linked_check_resolves_config() {
   printf 'linear\n' > "$dir/home/config/backlog-backend"
   printf 'linear=GAL-8\n' >> "$dir/home/state/task-a.meta"
   set +e
-  env -u CONFIG -u FM_CONFIG_OVERRIDE \
+  env -u CONFIG -u FM_CONFIG_OVERRIDE -u LINEAR_API_KEY \
     FM_ROOT_OVERRIDE="$dir/root" FM_HOME="$dir/home" \
     FM_TEST_GUARD_LOG="$dir/guard.log" FM_TEST_GH_LOG="$dir/gh.log" \
     FM_TEST_GH_AXI_LOG="$dir/gh-axi.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
