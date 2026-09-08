@@ -1,0 +1,63 @@
+# Pooled Claude awareness — live snapshot transcript
+# Two enabled subscription accounts (personal, work); one disabled account and one API-key slot correctly excluded from the pool.
+
+## 1. Healthy pool (usage well below limits)
+$ fm-procevent-claude-pool.sh snapshot
+{
+  "status": "healthy",
+  "observed_at": "2026-09-08T13:18:40.226804Z",
+  "reserve_percent": 10,
+  "enabled_slots": 2,
+  "remaining_points": 120,
+  "remaining_percent": 60.0,
+  "all_tight": false,
+  "nearest_reset": null,
+  "usable_reset": null
+}
+
+## 2. Pool below reserve (default reserve 10%) — captain is asked before new Claude crewmates
+$ fm-procevent-claude-pool.sh snapshot
+{
+  "status": "low",
+  "observed_at": "2026-09-08T13:18:40.303782Z",
+  "reserve_percent": 10,
+  "enabled_slots": 2,
+  "remaining_points": 13,
+  "remaining_percent": 6.5,
+  "all_tight": true,
+  "nearest_reset": "2026-09-08T14:03:40.258913Z",
+  "usable_reset": "2026-09-08T14:03:40.258913Z",
+  "message": "Claude pool below reserve; ask before starting new Claude crewmates"
+}
+
+## 3. Captain raises the reserve knob via FM_CONFIG_OVERRIDE (config/claude-pool-reserve = 40) — the override dir is honored
+$ FM_CONFIG_OVERRIDE=$LAB/override-config fm-procevent-claude-pool.sh snapshot   # moderate usage, ~36% remaining
+{
+  "status": "low",
+  "observed_at": "2026-09-08T13:18:40.382008Z",
+  "reserve_percent": 40.0,
+  "enabled_slots": 2,
+  "remaining_points": 62,
+  "remaining_percent": 31.0,
+  "all_tight": false,
+  "nearest_reset": null,
+  "usable_reset": null,
+  "message": "Claude pool below reserve; ask before starting new Claude crewmates"
+}
+$ fm-procevent-claude-pool.sh snapshot   # same usage without the override: healthy under the default 10% reserve
+{"status":"healthy","reserve_percent":10,"remaining_percent":31.0}
+
+## 4. Pool exhausted — notification names the nearest reset
+$ fm-procevent-claude-pool.sh snapshot
+{
+  "status": "exhausted",
+  "observed_at": "2026-09-08T13:18:40.503095Z",
+  "reserve_percent": 10,
+  "enabled_slots": 2,
+  "remaining_points": 0,
+  "remaining_percent": 0.0,
+  "all_tight": true,
+  "nearest_reset": "2026-09-08T14:03:40.455918Z",
+  "usable_reset": "2026-09-08T14:03:40.455918Z",
+  "message": "Claude pool exhausted; nearest reset: 2026-09-08T14:03:40.455918Z"
+}

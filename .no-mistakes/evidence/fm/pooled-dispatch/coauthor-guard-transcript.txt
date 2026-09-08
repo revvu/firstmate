@@ -1,0 +1,27 @@
+# Mechanical co-author guard — end-to-end transcript
+# A primary checkout with a linked task worktree; the guard binds ONLY the task worktree.
+
+$ fm-coauthor-guard.sh install $LAB/task-wt $LAB/task-hooks
+
+## Commit in the TASK worktree with agent + human co-author trailers
+$ git log -1 --format=%B   # agent trailers stripped, human co-author retained
+fix: the thing
+
+Co-authored-by: Pat Human <pat@example.com>
+
+## Same trailer committed in the PRIMARY checkout — unaffected, trailer retained
+$ git log -1 --format=%B
+chore: primary edit
+
+Co-authored-by: Claude <noreply@anthropic.com>
+
+## Binding is worktree-scoped config, not shared .git/hooks
+$ git -C $LAB/task-wt config --worktree core.hooksPath
+/tmp/fm-coauthor-demo.KnAUsU/task-hooks
+$ git -C $LAB/primary config --worktree core.hooksPath || echo '(unset in primary)'
+(unset in primary)
+$ ls $LAB/primary/.git/hooks | grep -v sample || echo '(no hooks written to shared .git/hooks)'
+(no hooks written to shared .git/hooks)
+
+## remove: pooled worktree returns clean
+(guard binding removed)

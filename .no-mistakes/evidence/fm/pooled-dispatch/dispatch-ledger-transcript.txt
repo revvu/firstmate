@@ -1,0 +1,32 @@
+# Dispatch outcome ledger — end-to-end transcript
+
+## One outcome line per retired dispatch
+$ cat data/dispatch-ledger.jsonl
+{"task_id":"fix-login","spawn_gen":"s1788820000.1.2","kind":"ship","harness":"codex","model":"frontier","effort":"high","mode":"no-mistakes","outcome":"done","pr":"https://github.com/revvu/firstmate/pull/9","started_at":"2026-09-07T22:26:40Z","ended_at":"2026-09-08T13:19:23.223748Z"}
+{"task_id":"probe-flake","spawn_gen":"s1788821000.1.1","kind":"scout","harness":"cursor","model":"default","effort":"default","mode":"local-only","outcome":"failed","pr":null,"started_at":"2026-09-07T22:43:20Z","ended_at":"2026-09-08T13:19:23.273055Z"}
+
+## Weekly matrix review summary
+$ fm-dispatch-ledger.sh summarize
+kind	harness	model	effort	mode	outcome	count
+scout	cursor	default	default	local-only	failed	1
+ship	codex	frontier	high	no-mistakes	done	1
+
+## Retry is deduplicated; legacy meta without spawn_gen still retires
+$ jq -c '{task_id, spawn_gen, outcome}' data/dispatch-ledger.jsonl
+{"task_id":"fix-login","spawn_gen":"s1788820000.1.2","outcome":"done"}
+{"task_id":"probe-flake","spawn_gen":"s1788821000.1.1","outcome":"failed"}
+{"task_id":"oldtask","spawn_gen":"legacy","outcome":"done"}
+
+## A corrupt ledger line never blocks retirement: quarantined aside intact, fresh ledger takes the row
+$ fm-dispatch-ledger.sh append next-task.meta ... done
+warning: dispatch ledger: unreadable ledger quarantined at data/dispatch-ledger.jsonl.corrupt-20260908T131923Z; starting a fresh ledger so retirement can proceed - repair and merge or remove it by hand
+$ ls data/
+dispatch-ledger.jsonl
+dispatch-ledger.jsonl.corrupt-20260908T131923Z
+dispatch-ledger.lock
+$ cat the fresh ledger
+{"task_id":"next-task","outcome":"done"}
+$ fm-dispatch-ledger.sh summarize   # warns until the quarantined file is repaired
+warning: dispatch ledger: quarantined corrupt ledger at data/dispatch-ledger.jsonl.corrupt-20260908T131923Z; repair and merge or remove it by hand
+kind	harness	model	effort	mode	outcome	count
+ship	claude	default	default	no-mistakes	done	1
