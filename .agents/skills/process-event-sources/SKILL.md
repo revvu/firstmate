@@ -46,7 +46,11 @@ A configured remote secondmate reply source is armed and handled through `bin/fm
 Its header owns exact commands, while the adapter owns cursor continuity, validated deduplicated status ingest, path-confined document fetch, acknowledgement, and re-arming after a good delta.
 A continuity break is escalated once and stays unarmed until an operator deliberately rebases it.
 
-For a recurring mid-task quota check, arm the quota adapter:
+For this fork's pooled Claude notifications, use `bin/fm-procevent-claude-pool.sh`; setup and verification boundaries are in [`docs/multi-account-quota.md`](../../../docs/multi-account-quota.md).
+Relay low, exhausted, and unknown pool results under `AGENTS.md` section 4, then acknowledge each exact capture through the generic handled path below.
+The pool source remains registered across notifications, so do not re-arm it after a low result.
+
+For a recurring mid-task quota check of other providers, arm the quota adapter:
 
 ```sh
 bin/fm-procevent-quota.sh arm [--interval <secs>] [--threshold <percent>] [--provider <provider>]

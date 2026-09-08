@@ -292,6 +292,15 @@
 # and every refusal; a failed registration stops this spawn rather than launching
 # a worker that would wedge on the dialog. A --secondmate launch never runs it,
 # so a claude secondmate home keeps its own one-time trust decision.
+# Every claude launch also carries the attribution-off policy in its per-launch
+# --settings JSON, so a spawned worker never writes a Co-Authored-By trailer,
+# Claude-Session link, or generated-with line into a commit or PR body;
+# launch_template() below owns the reason it cannot come from the captain's own
+# settings. Independent of any harness's own attribution behavior, every
+# ship/scout spawn also binds bin/fm-coauthor-guard.sh's task-private
+# commit-msg hook to the task worktree (worktree-scoped core.hooksPath), which
+# mechanically strips known agent Co-authored-by trailers before a commit
+# lands; a failed binding refuses the spawn.
 # Publishing the record and moving this home's backlog item to In flight are one
 # step, not two: bin/fm-backlog-transition-lib.sh owns that invariant, and this
 # script performs the transition under the task's own meta lock before it reports
@@ -312,6 +321,8 @@
 # success line and state/<id>.meta omit them.
 # Every fresh spawn or relaunch records a new spawn_gen= incarnation token so durable
 # consumers can distinguish a replacement worker that reuses the same task id.
+# Fresh dispatches also record started_at= in UTC; relaunch preserves that start
+# for bin/fm-dispatch-ledger.sh's eventual retirement record.
 # When the home session's frozen trace-context decision is enabled (see
 # docs/configuration.md and bin/fm-trace-context-lib.sh), the meta also records
 # one W3C traceparent= carrier, the same value injected into the pane as
@@ -1452,7 +1463,15 @@ launch_template() {
     # alone disables the feature; keep both so a managed override of one still
     # leaves the other in force. Both are per-launch, scoped to this invocation only,
     # and never touch the captain's global ~/.claude/settings.json.
-    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off"}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    # The same inline --settings JSON also carries the attribution policy
+    # ("attribution": {"commit": "", "pr": "", "sessionUrl": false}), which
+    # suppresses Claude Code's Co-Authored-By trailer, Claude-Session link, and
+    # generated-with line in commits and PR bodies. The captain sets that
+    # policy in the `user` settings scope, but a launched worker's settings
+    # sources are not guaranteed to load that scope, so a worker would
+    # otherwise run with attribution back on; carrying it per launch keeps the
+    # policy in force regardless of which settings scopes end up loaded.
+    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false}}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     codex)
       if [ "$kind" = secondmate ]; then
         printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
@@ -1509,7 +1528,7 @@ launch_template() {
     # inherited CLAUDECODE cannot outrank cursor's own marker in a process that
     # only reads the environment. Cursor exposes no effort flag, so the shared
     # effort axis is deliberately omitted and stays in task metadata only.
-    cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__) Never add an agent Co-authored-by trailer to commits or agent attribution to pull requests. Before committing, remove any agent co-author trailer from the commit message."' ;;
     # gemini (Google Gemini CLI): a positional query starts the supervised
     # interactive session and auto-submits it, so the brief rides the launch
     # command exactly as it does for claude and grok (verified: a multi-line
@@ -3142,6 +3161,24 @@ fi
 TASK_TMP="/tmp/fm-$ID"
 mkdir -p "$TASK_TMP/gotmp"
 
+# Mechanical no-agent-co-author enforcement for every ship/scout launch,
+# regardless of harness: bin/fm-coauthor-guard.sh binds a task-private
+# commit-msg hook to THIS worktree alone through worktree-scoped
+# core.hooksPath (extensions.worktreeConfig), stripping known agent
+# Co-authored-by trailers before any commit lands while chaining the project's
+# own previously effective hooks. The per-launch model instructions stay as
+# defense in depth; this hook is the guarantee. Nothing touches the shared
+# .git/hooks or any tracked file, fm-teardown unbinds it before a pooled
+# worktree is returned, and the hooks dir dies with the task temp root. A
+# failed install refuses the spawn: launching a worker whose commits are
+# unguarded would silently drop a required enforcement layer.
+if [ "$KIND" != secondmate ]; then
+  if ! "$FM_ROOT/bin/fm-coauthor-guard.sh" install "$WT" "$TASK_TMP/hooks"; then
+    echo "error: could not bind the agent co-author commit guard to $WT; refusing to launch a worker whose commits would be unguarded; inspect window $T" >&2
+    exit 1
+  fi
+fi
+
 # Per-harness turn-end hook where enabled: a file that touches
 # state/<id>.turn-ended when the agent finishes a turn. Worktree-resident hooks
 # and token pointers stay out of git's view so they never block teardown's dirty
@@ -3612,6 +3649,9 @@ preserve_relaunch_meta() {
   [ -z "$LINEAR_ID" ] || echo "linear=$LINEAR_ID"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  # A relaunch keeps the original dispatch start through preserve_relaunch_meta;
+  # a legacy record without one falls back to the ledger's spawn_gen timestamp.
+  [ "$RELAUNCH" -eq 1 ] || echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
@@ -3783,50 +3823,8 @@ esac
 # Forward firstmate's own resolved store onto the claude launch so the crewmate
 # uses the same credential/config firstmate is authenticated with. Only when set;
 # an unset value is the single-store default and needs no prefix.
-#
-# Multi-account (claude-swap): when FM_CLAUDE_CSWAP_SLOT is set, or when
-# config/claude-cswap-auto is present and harness is claude, wrap the launch
-# through `cswap run <slot> -- <claude-args>` so the crewmate uses that slot's
-# session profile without changing the captain's default login. Skip forwarding
-# CLAUDE_CONFIG_DIR in that case — cswap owns it. See docs/multi-account-quota.md
-# and the claude-account-dispatch skill.
-if [ "$HARNESS" = claude ]; then
-  CSWAP_SLOT=${FM_CLAUDE_CSWAP_SLOT:-}
-  if [ -z "$CSWAP_SLOT" ] && [ -f "$FM_HOME/config/claude-cswap-auto" ]; then
-    cswap_need=general
-    case "${MODEL:-}" in
-      *fable*|*Fable*) cswap_need=fable ;;
-    esac
-    if CSWAP_PICK=$("$FM_ROOT/bin/fm-cswap-pick.sh" --need "$cswap_need" --json 2>/dev/null); then
-      CSWAP_SLOT=$(printf '%s' "$CSWAP_PICK" | python3 -c 'import json,sys; print(json.load(sys.stdin)["slot"])' 2>/dev/null || true)
-      if [ -n "$CSWAP_SLOT" ]; then
-        echo "info: claude-cswap-auto selected slot=$CSWAP_SLOT need=$cswap_need" >&2
-      fi
-    else
-      echo "warning: claude-cswap-auto enabled but fm-cswap-pick.sh could not pick a slot; launching bare claude" >&2
-    fi
-  fi
-  if [ -n "$CSWAP_SLOT" ]; then
-    if ! command -v cswap >/dev/null 2>&1; then
-      echo "error: FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT set but cswap is not on PATH" >&2
-      exit 1
-    fi
-    # Template is: ENV_ASSIGNS claude CLAUDE_ARGS...
-    # cswap run execs `claude` itself; args after -- are Claude Code flags only.
-    case "$LAUNCH" in
-      *" claude "*)
-        LAUNCH=${LAUNCH/ claude / cswap run ${CSWAP_SLOT} -- }
-        ;;
-      *)
-        echo "error: cannot wrap unexpected claude launch for cswap slot $CSWAP_SLOT" >&2
-        exit 1
-        ;;
-    esac
-    # Record for meta/debug; do not also forward CLAUDE_CONFIG_DIR.
-    FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT
-  elif [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
-    LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
-  fi
+if [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
 fi
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")

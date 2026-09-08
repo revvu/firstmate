@@ -657,7 +657,7 @@ make_path_without_lsof() {  # <case-dir>
   local case_dir=$1 path_dir="$1/path-without-lsof" cmd resolved
   mkdir -p "$path_dir"
   for cmd in awk bash basename cat chmod cp cut date dirname env find git grep head hostname id ln \
-    mkdir mktemp mv perl ps readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
+    mkdir mktemp mv perl ps python3 readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
     resolved=$(command -v "$cmd" 2>/dev/null) || continue
     case "$resolved" in /*) ln -sf "$resolved" "$path_dir/$cmd" ;; esac
   done
@@ -683,6 +683,9 @@ test_local_only_fork_remote_allows() {
   ! grep -q REFUSED "$case_dir/stderr" || fail "fork-allow: teardown printed a REFUSED line"
   [ ! -e "$case_dir/state/.task-x1.branch-outcome-index" ] \
     || fail "fork-allow: teardown left the task's branch outcome index behind"
+  jq -se 'length == 1 and .[0].task_id == "task-x1" and .[0].outcome == "done" and .[0].mode == "local-only"' \
+    "$case_dir/data/dispatch-ledger.jsonl" >/dev/null \
+    || fail "successful teardown did not retain one dispatch outcome"
   # The supervision branch reports the teardown it just performed AFTER the
   # task's records are gone (bin/fm-branch-prompt.sh); that report must be
   # stored, must publish its ready sequence, and must not recreate the index.
@@ -702,6 +705,37 @@ test_local_only_fork_remote_allows() {
   ' "$case_dir/state/home-summary.json" >/dev/null \
     || fail "successful task teardown did not publish the task's removal from the home summary ledger"
   pass "local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed"
+}
+
+# The ledger append runs after teardown's destructive steps, so a corrupt line
+# in data/dispatch-ledger.jsonl must never strand the task unretirable: the
+# corrupt file is quarantined aside intact, a fresh ledger records the outcome,
+# and teardown completes.
+test_corrupt_dispatch_ledger_never_blocks_retirement() {
+  local case_dir rc quarantined
+  case_dir=$(make_case corrupt-ledger)
+  write_meta "$case_dir" local-only ship
+  wt_commit "$case_dir" "fix the thing"
+  add_fork_with_pushed_branch "$case_dir"
+  printf '{broken\n' > "$case_dir/data/dispatch-ledger.jsonl"
+  cp "$case_dir/data/dispatch-ledger.jsonl" "$case_dir/ledger-before"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "corrupt-ledger: teardown must complete despite a corrupt dispatch ledger"
+  quarantined=$(find "$case_dir/data" -name 'dispatch-ledger.jsonl.corrupt-*' | head -1)
+  [ -n "$quarantined" ] || fail "corrupt-ledger: the corrupt ledger was not quarantined"
+  cmp -s "$case_dir/ledger-before" "$quarantined" \
+    || fail "corrupt-ledger: the quarantined ledger was altered"
+  grep -qF "$quarantined" "$case_dir/stderr" \
+    || fail "corrupt-ledger: teardown did not name the quarantined path"
+  jq -se 'length == 1 and .[0].task_id == "task-x1" and .[0].outcome == "done"' \
+    "$case_dir/data/dispatch-ledger.jsonl" >/dev/null \
+    || fail "corrupt-ledger: the fresh ledger did not record the retirement outcome"
+  pass "a corrupt dispatch ledger is quarantined intact and never blocks retirement"
 }
 
 test_teardown_closes_the_backlog_item_itself() {
@@ -1601,6 +1635,13 @@ test_non_linked_index_lock_path_is_checked_from_worktree() {
 
 test_index_lock_mtime_read_failure_refuses() {
   local case_dir rc lock
+  # The mtime fault is injected by a fake stat on PATH; on Darwin the lock
+  # helper now calls /usr/bin/stat directly, so the fake can never fire there.
+  # Skip the Darwin run of this case.
+  if [ "$(uname)" = Darwin ]; then
+    pass "index-lock mtime fault injection is PATH-based; skipped on Darwin where stat is /usr/bin/stat"
+    return
+  fi
   case_dir=$(make_case mtime-error-index-lock)
   write_meta "$case_dir" no-mistakes ship
   wt_commit "$case_dir" "shippable work"
@@ -3649,6 +3690,7 @@ EOF
 }
 
 test_local_only_fork_remote_allows
+test_corrupt_dispatch_ledger_never_blocks_retirement
 test_teardown_closes_the_backlog_item_itself
 test_teardown_manual_backend_leaves_the_backlog_to_the_operator
 test_local_only_truly_unpushed_refuses

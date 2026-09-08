@@ -12,6 +12,8 @@ metadata:
 
 # quota-array-dispatch
 
+In this fork, `AGENTS.md` section 4's fork override supersedes this arbitration procedure; retain this skill for upstream compatibility and do not use its quota vetoes to change the matrix.
+
 This skill is the single owner of the completion-aware profile-array selection procedure.
 `AGENTS.md` section 4 owns the always-loaded intake boundary, load trigger, malformed-config refusal, every-candidate accounting, and strongest-reasoning/tie safety rules.
 `harness-adapters` owns harness verification, model/provider discovery, and effort fallback.

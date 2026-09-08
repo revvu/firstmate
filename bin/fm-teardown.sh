@@ -119,7 +119,9 @@
 # releases its durable treehouse lease so the pool slot is freed,
 # never left leased forever. If the treehouse return fails, teardown leaves the
 # leased home and state in place instead of hiding a still-held lease.
-# Usage: fm-teardown.sh <task-id> [--force] [--legacy-record]
+# Usage: fm-teardown.sh <task-id> [--force] [--legacy-record] [--outcome done|failed|cancelled]
+#   --outcome records the supervisor-confirmed task result in the private dispatch
+#   ledger; bin/fm-dispatch-ledger.sh owns the schema and default classification.
 #   --force skips ordinary-task dirty and landed-work checks, skips scout report
 #   checks, and discards secondmate child work for kind=secondmate. Only use it
 #   when the captain has explicitly said to discard the work.
@@ -263,12 +265,19 @@ if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
 fi
 ID=$1
 FORCE=
+DISPATCH_OUTCOME=auto
 LEGACY_RECORD_GIVEN=0
 shift
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --force) FORCE=--force ;;
     --legacy-record) LEGACY_RECORD_GIVEN=1 ;;
+    --outcome)
+      case "${2:-}" in
+        done|failed|cancelled) DISPATCH_OUTCOME=$2; shift ;;
+        *) echo "error: --outcome requires done, failed, or cancelled" >&2; exit 2 ;;
+      esac
+      ;;
     *)
       echo "error: invalid teardown request" >&2
       exit 2
@@ -3245,6 +3254,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
     rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
       "$WT/.opencode/plugins/fm-busy-state.js" \
       "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+    "$SCRIPT_DIR/fm-coauthor-guard.sh" remove "$WT" || true
   fi
   [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
@@ -3258,6 +3268,9 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   # Remove our hook file so a reused pool worktree cannot fire signals for a dead task.
   rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
     "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+  # Unbind the task-private co-author guard so the pooled worktree returns with
+  # the project's own hooks path in force (bin/fm-coauthor-guard.sh).
+  "$SCRIPT_DIR/fm-coauthor-guard.sh" remove "$WT" || true
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
   # the project. teardown_treehouse_return tolerates transient and stale git locks
@@ -3377,6 +3390,16 @@ fm_backend_clear_transition "$BACKEND" "$STATE" "$T" || true
 [ -n "$TASK_TMP" ] && rm -rf "$TASK_TMP"
 remove_pr_poll_artifacts "$STATE" "$ID" || exit 1
 retire_busy_state "$STATE" "$ID" "$BUSY_GEN" || exit 1
+# The task metadata lock is still held. Preserve its outcome before the record
+# is retired; the ledger's incarnation key makes interrupted teardown retryable.
+if [ "$KIND" != secondmate ] && [ -z "$CLEANUP_RECOVERY" ]; then
+  if [ "$DISPATCH_OUTCOME" = auto ] && [ "$FORCE" = --force ]; then
+    DISPATCH_OUTCOME=cancelled
+  fi
+  FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-dispatch-ledger.sh" \
+    append "$META" "$STATE/$ID.status" "$DISPATCH_OUTCOME" "$PR_URL" \
+    || echo "warning: $ID's dispatch outcome could not be appended to the ledger; retirement continues without it" >&2
+fi
 status_retire_presentation_task "$STATE" "$ID" || exit 1
 rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.exit" \
   "$STATE/$ID.pi-ext.ts" "$STATE/$ID.omp-ext.ts" "$STATE/$ID.grok-turnend-token" \

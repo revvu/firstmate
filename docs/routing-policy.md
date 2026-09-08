@@ -1,75 +1,39 @@
-# Routing policy (captain fleet)
+# Routing policy for this fork
 
-Portable standing policy for this firstmate fork.
-Edit weekly by hand when model rankings change.
-Machine-local activation is `config/crew-dispatch.json` (gitignored); keep this doc and `docs/examples/crew-dispatch.json` in sync when you change the matrix.
+The task-class matrix has one owner: [`examples/crew-dispatch.json`](examples/crew-dispatch.json).
+Activate it in each home's private `config/crew-dispatch.json` after review.
+The fork override in [`AGENTS.md` section 4](../AGENTS.md#4-harness-and-runtime-dispatch) owns selection, reserve approval, and reset waiting.
+The upstream quota tools remain available for compatibility; they do not arbitrate this fork's dispatches.
 
-Related owners:
+## Rationale and handoff
 
-- `AGENTS.md` section 4 — dispatch intake + quota-array rules
-- `.agents/skills/plan-to-fleet` — Lavish planning → implementation fleet
-- `.agents/skills/quota-array-dispatch` — profile-array selection
-- `.agents/skills/harness-adapters` — verified harness facts (includes `cursor`)
+Keep open product, architecture, and taste decisions on Fable because judgment is the task's central requirement.
+Use Codex for frontier implementation and adversarial review, and Cursor for speed work once the intended change is clear.
+Availability does not change those assignments.
+An ordered alternative is for a concrete hard launch error such as a proven unsupported model or unusable credential, never low headroom, a rate-limit reset, or missing quota data.
+A hard backend error remains a blocker under section 4; candidate alternatives do not authorize switching runtime backends.
+Judgment work never crosses to another agent without the captain's explicit choice.
 
-## Model hierarchy
+During Explore, keep questions and final taste convergence in the judgment conversation while Cursor produces mechanical edits or rough variants.
+A locked multi-slice plan hands off through [`plan-to-fleet`](../.agents/skills/plan-to-fleet/SKILL.md).
+An obvious single task can be routed directly from the matrix.
+Cursor profiles omit `effort` because the CLI has no separate effort flag.
 
-| Tier | Who | Job |
-|---|---|---|
-| Judgment / design | Claude **Fable** (then strong Claude) | Ask the captain hard questions; design; architecture; taste/layout converge |
-| Frontier implement | **Codex** | Smart implementation when the path is mostly decided but still needs a strong coder; adversarial review |
-| Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out (Cursor has **no effort flag** — omit `effort` in dispatch; optionally pin `--model` like `composer-2.5-fast`) |
+## Pool awareness
 
-**Implementers are Cursor + Codex.** Fable is not the default coder.
+[`multi-account-quota.md`](multi-account-quota.md) owns the pooled Claude setup, cache interpretation, and live verification boundaries.
+Before new Claude dispatches, inspect `bin/fm-procevent-claude-pool.sh snapshot` and apply section 4's reserve gate; do not rely on whether a notification was already delivered.
+A missing or stale observation is uncertainty to report, never a reason to select another lane.
+`quota-axi` remains optional awareness for other providers: read its default TOON first and request JSON only for an unresolved structural ambiguity.
+Neither that output nor pool pressure changes the matrix.
 
-## Modes
+## Weekly matrix review
 
-### Explore (single session, no fleet)
+1. Run `bin/fm-dispatch-ledger.sh summarize` in each owning home to summarize the last seven days of retired dispatches, including failures and cancellations.
+2. Inspect the underlying `data/dispatch-ledger.jsonl` entries and their PR links for quality evidence before proposing matrix changes.
+3. Edit only `docs/examples/crew-dispatch.json` for task-class assignments; update rationale here only when the rationale changes.
+4. Copy the approved example into each home's private `config/crew-dispatch.json`.
+5. Smoke one Cursor chore, one Codex implementation, and one Fable design scout, subject to the reserve gate.
 
-Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
-
-| Role | Who |
-|---|---|
-| Hard questions / framing | Fable (or high-effort Claude) |
-| Fast Lavish/Paper edits and many rough variants | Cursor CLI (or Cursor crewmate once dispatched) |
-| Final taste converge | Fable |
-
-Do not spawn a big fleet until intent is lockable.
-
-### Execute (First Mate + crew)
-
-Plan locked → `/plan-to-fleet` → spawn.
-
-| Task class | Preferred order |
-|---|---|
-| Design / architecture / clarifying questions | Fable → Claude high |
-| Taste / layout cleanup | Fable → Claude high |
-| UI fan-out (rough options) | Cursor → Codex |
-| Chore / mechanical | Cursor → Codex |
-| Ordinary ship | Cursor → Codex |
-| Ambiguous-but-implementable ship | Codex → Cursor → Claude |
-| Adversarial review | Codex → Claude |
-
-Done units (Gallopify): merged PR **and** Linear issue closed together when Linear owns the work.
-Quality: `no-mistakes` local gate, then CodeRabbit on the PR.
-
-## Auto-route vs propose
-
-- Auto-route when the class is obvious.
-- Propose via `plan-to-fleet` when leaving Explore with a multi-slice plan.
-
-## Claude accounts + quota
-
-`quota-axi` sees the **active** Claude account plus Codex + Cursor.
-`claude-swap` owns the multi-account inventory (`cache/usage.json`).
-
-**Execute:** with `config/claude-cswap-auto` on, Claude crewmates auto-pick a healthy slot via `bin/fm-cswap-pick.sh` and launch through `cswap run` (see `docs/multi-account-quota.md`).
-
-**Explore:** not fleet-routed. Global policy in `~/github/dotfiles/home/global-agents.md` tells the judgment model to keep questions here and delegate mechanical Lavish/Paper fan-out to Cursor via `agent -p`.
-
-
-## Weekly matrix edit checklist
-
-1. Edit this file.
-2. Mirror into `docs/examples/crew-dispatch.json`.
-3. Copy into each home’s `config/crew-dispatch.json`.
-4. Smoke one Cursor chore spawn, one Codex implement spawn, one Fable design scout.
+The ledger helper owns its schema, timestamp limitations, and retry behavior in its header and `--help`.
+A secondmate is a persistent supervisor rather than a dispatched task; review its own home's task ledger alongside the primary home's ledger.

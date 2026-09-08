@@ -260,9 +260,10 @@ family_for_basename() {
     fm-brief.test.sh|fm-vendor-auth-probe.test.sh|\
     fm-calm-pi-extension.test.sh|fm-cd-pretool-check.test.sh|\
     fm-classify-decision-key.test.sh|\
+    fm-coauthor-guard.test.sh|\
     fm-composer-ghost.test.sh|fm-composer-lib.test.sh|\
     fm-crew-state.test.sh|fm-captain-hold-lifecycle.test.sh|\
-    fm-documentation-audiences.test.sh|fm-ensure-agents-md.test.sh|\
+    fm-dispatch-ledger.test.sh|fm-documentation-audiences.test.sh|fm-ensure-agents-md.test.sh|\
     fm-exit-record.test.sh|fm-grok-harness.test.sh|\
     fm-kimi-harness.test.sh|fm-muse-harness.test.sh|fm-rovo-harness.test.sh|fm-omp-harness.test.sh|fm-herdr-lab.test.sh|fm-linear-backend.test.sh|fm-lint.test.sh|\
     fm-lint-workflows.test.sh|\
@@ -371,7 +372,7 @@ family_for_basename() {
     fm-extension-binding.test.sh|fm-gitignore-config.test.sh|\
     fm-no-mistakes-required.test.sh|fm-peek-remote.test.sh|\
     fm-pending-reply.test.sh|fm-pi-branch-extension.test.sh|\
-    fm-procevent-quota.test.sh|fm-procevent-when.test.sh|fm-procevent.test.sh|\
+    fm-procevent-claude-pool.test.sh|fm-procevent-quota.test.sh|fm-procevent-when.test.sh|fm-procevent.test.sh|\
     fm-live-gate.test.sh|\
     fm-project-origin.test.sh|fm-public-followup.test.sh|fm-quota-choose.test.sh|\
     fm-remote-entrypoint.test.sh|fm-remote-secondmate-parent-binding.test.sh|\
@@ -1282,6 +1283,18 @@ families_for_changed_path() {
       printf '%s\n' session-bootstrap
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
       printf '%s\n' "__script__:fm-quota-choose.test.sh"
+      ;;
+    bin/fm-procevent-claude-pool.sh)
+      printf '%s\n' "__script__:fm-procevent-claude-pool.test.sh"
+      ;;
+    bin/fm-coauthor-guard.sh)
+      printf '%s\n' "__script__:fm-coauthor-guard.test.sh"
+      printf '%s\n' "__script__:fm-spawn-dispatch-profile.test.sh"
+      printf '%s\n' "__script__:fm-teardown.test.sh"
+      ;;
+    bin/fm-dispatch-ledger.sh)
+      printf '%s\n' "__script__:fm-dispatch-ledger.test.sh"
+      printf '%s\n' "__script__:fm-teardown.test.sh"
       ;;
     bin/fm-procevent-quota.sh)
       printf '%s\n' "__script__:fm-procevent-quota.test.sh"
@@ -2275,7 +2288,7 @@ else
       cat "$out"
     fi
     if worker_root_mode_is_enforceable; then
-      mode=$(stat -c %a "$work" 2>/dev/null || stat -f %Lp "$work" 2>/dev/null || echo unknown)
+      mode=$(stat -c %a "$work" 2>/dev/null || /usr/bin/stat -f %Lp "$work" 2>/dev/null || echo unknown)
       case "$mode" in
         700|0700) ;;
         *)
