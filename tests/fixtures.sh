@@ -287,7 +287,9 @@ fm_test_run_spawn() {
   # A test that needs the set case opts in through FM_TEST_CLAUDE_CONFIG_DIR.
   local spawn_home=$home/user-home
   mkdir -p "$spawn_home"
-  FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$spawn_home" \
+  # FM_TEST_ROOT_OVERRIDE lets a suite point the spawn at a proxy script root
+  # (fm-spawn-dispatch-profile's exit-record proxy); unset keeps the real root.
+  FM_ROOT_OVERRIDE="${FM_TEST_ROOT_OVERRIDE:-}" FM_HOME="$home" HOME="$spawn_home" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \

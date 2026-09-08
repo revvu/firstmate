@@ -73,3 +73,12 @@ Tracked hooks register `stop`, `sessionStart`, and two `preToolUse` seatbelts th
 `stop` cannot block because exit 2 is a silent no-op, so `../../../bin/fm-turnend-guard-cursor.sh` parks on supervision and returns one bounded `followup_message`.
 It does not fire in headless `cursor-agent -p`.
 `preCompact` is unregistered because it cannot inject context, so digest re-emission after Cursor compaction remains deferred.
+
+## Commit attribution
+
+Every generated Cursor launch carries an explicit instruction forbidding agent co-author trailers and asking the worker to remove them before committing.
+This is instruction-level enforcement, not a mechanical rejection of arbitrary commit messages.
+On 2026-09-07, installed Cursor Agent `2026.09.02-c22c1a3` exposed no attribution option in `cursor-agent --help`.
+Its installed config schema accepts `attribution.attributeCommitsToAgent` and `attribution.attributePRsToAgent` in user configuration, while the project `.cursor/cli.json` schema accepts only permissions.
+The adapter preserves the existing user identity and config directory; it does not create a separate credential store or change shared user settings to simulate a per-launch flag.
+A commit authored by the live Cursor lane remains part of the post-merge verification in `docs/multi-account-quota.md`.

@@ -657,7 +657,7 @@ make_path_without_lsof() {  # <case-dir>
   local case_dir=$1 path_dir="$1/path-without-lsof" cmd resolved
   mkdir -p "$path_dir"
   for cmd in awk bash basename cat chmod cp cut date dirname env find git grep head hostname id ln \
-    mkdir mktemp mv perl ps readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
+    mkdir mktemp mv perl ps python3 readlink realpath rm sed sh sleep sort stat tail timeout tr uname wc xargs; do
     resolved=$(command -v "$cmd" 2>/dev/null) || continue
     case "$resolved" in /*) ln -sf "$resolved" "$path_dir/$cmd" ;; esac
   done
@@ -683,6 +683,9 @@ test_local_only_fork_remote_allows() {
   ! grep -q REFUSED "$case_dir/stderr" || fail "fork-allow: teardown printed a REFUSED line"
   [ ! -e "$case_dir/state/.task-x1.branch-outcome-index" ] \
     || fail "fork-allow: teardown left the task's branch outcome index behind"
+  jq -se 'length == 1 and .[0].task_id == "task-x1" and .[0].outcome == "done" and .[0].mode == "local-only"' \
+    "$case_dir/data/dispatch-ledger.jsonl" >/dev/null \
+    || fail "successful teardown did not retain one dispatch outcome"
   # The supervision branch reports the teardown it just performed AFTER the
   # task's records are gone (bin/fm-branch-prompt.sh); that report must be
   # stored, must publish its ready sequence, and must not recreate the index.

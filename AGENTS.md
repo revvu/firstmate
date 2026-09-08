@@ -70,6 +70,7 @@ bin/                 helper scripts, committed; read each script's header before
 .env                 optional Relay pairing token and optional Linear API key; LOCAL, gitignored; presence-gates section 14 and backs the linear backlog backend
 config/crew-harness  crewmate harness override; LOCAL, gitignored; absent or "default" = same as firstmate. Inherited as the literal file: a concrete primary adapter value also controls a secondmate home's own crewmates (section 4)
 config/crew-dispatch.json  optional crewmate dispatch profiles; LOCAL, gitignored; firstmate-maintained but human-editable natural-language rules that choose a per-task harness/model/effort profile (section 4). Inherited by secondmate homes
+config/claude-pool-reserve  home-local Claude pool reserve; bin/fm-procevent-claude-pool.sh owns its format and default (setup: docs/multi-account-quota.md)
 config/secondmate-harness  harness the PRIMARY uses to launch SECONDMATE agents, optionally followed by a model and effort token on the same line ("<harness> [<model>] [<effort>]"; section 4); LOCAL, gitignored; absent or "default" harness falls back to config/crew-harness then firstmate's own. The primary's own setting; NOT inherited into secondmate homes (secondmates do not spawn secondmates)
 config/backlog-backend  backlog backend override; LOCAL, gitignored; absent or "tasks-axi" = default tasks-axi backend, "manual" = force routine backlog updates to hand-editing, "linear" = Linear-hosted durable queue needing LINEAR_API_KEY in this home's .env (docs/linear-backend.md); inherited by secondmate homes (section 10)
 config/backend  runtime session-provider backend override for new tasks; LOCAL, gitignored; absent = falls through to runtime auto-detection (the runtime firstmate itself is executing inside), then tmux; tmux is the verified reference backend (docs/tmux-backend.md), herdr has its own required CI lane (docs/herdr-backend.md), while zellij, orca, and cmux remain experimental with no dedicated real-backend CI lane (docs/zellij-backend.md, docs/orca-backend.md, docs/cmux-backend.md) - herdr and cmux can also be selected by runtime auto-detection, zellij and orca never are (always explicit), and codex-app is not accepted; see docs/codex-app-backend.md; inherited by secondmate homes under the primary-authoritative contract in secondmate-provisioning
@@ -86,6 +87,7 @@ config/watched-tools.json  optional list of the tools this home depends on, read
 config/x-mode.env    generated Relay watcher cadence; LOCAL, gitignored; source before arming watcher when present
 data/                personal fleet records; LOCAL, gitignored as a whole
   backlog.md         task queue, dependencies, history
+  dispatch-ledger.jsonl  private retired-task outcomes; bin/fm-dispatch-ledger.sh owns schema and weekly summary
   captain.md         this home's domain-local captain preferences and working style; LOCAL, gitignored, canonical even if harness memory mirrors it, and updated with inspect-then-update
   captain-shared.md  main-authoritative shared captain preferences propagated read-only to secondmate homes; LOCAL, gitignored, owned by secondmate-provisioning
   learnings.md       fleet-local operational facts and gotchas; LOCAL, gitignored; dated, evidence-backed, curated, and updated with inspect-then-update - rewrite and prune rather than append forever, the same contract as captain.md; created lazily, absent until this home has a learning to store
@@ -210,6 +212,12 @@ If static `config/crew-harness` or `config/secondmate-harness` names an unverifi
 `docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
 When dispatch profiles exist, consult them at every crewmate or scout intake and pass the resolved concrete profile required by `fm-spawn`.
 Routing precedence is an explicit per-task captain override, then the best-fit configured rule, then the configured default, then the static crewmate harness.
+**Fork override:** the task-class matrix in `docs/examples/crew-dispatch.json` selects the lane; matched arrays are strict preference order, falling through only on a concrete hard error, never on quota pressure.
+This overrides the quota-arbitration paragraphs below and `quota-array-dispatch` for this fork; quota evidence feeds captain awareness instead (setup: `docs/multi-account-quota.md`).
+Below the Claude pool reserve, ask the captain before starting a NEW Claude crewmate; existing work continues and Cursor/Codex lanes are unaffected.
+When all Claude accounts are tight and judgment work is waiting, wait quietly if the nearest applicable recovery is within about one hour, otherwise tell the captain; changing its agent always requires the captain's explicit choice.
+Load `process-event-sources` before arming pooled notifications and on their wakes, and follow `docs/routing-policy.md` for the pre-dispatch snapshot and weekly outcome review.
+
 Firstmate alone resolves a matched profile array: begin with `quota-axi`'s default TOON at that intake, using the skill's narrow TOON-then-`--json` fallback only for genuine ambiguity, evaluate every configured candidate against that current output, and choose with inspectable `spendPriority` as the one quota-perspective ranker after the skill's eligibility, reasoning-class, and runway-feasibility gates.
 Account for every candidate with the catalog evidence, provider relationship, applicable quota and authentication facts, remaining uncertainty, fit and reasoning class, and the spendPriority and runway evidence used in selection; never omit a candidate, guess, fall back silently, or call the result quota-informed without them.
 Establish model support and provider family from that harness's own authoritative catalog, then read `quota-axi` at the granularity the vendor actually supplies: provider-level or all-model evidence applies to every model established in that family, and a named-model window bounds only that model.
@@ -220,7 +228,6 @@ When every candidate is tight, preserve the captain's strongest-reasoning class 
 Break genuine evidence ties without array-order or harness bias.
 `quota-axi` owns how model or product windows relate to bounding account windows and remains data-only.
 Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the TOON-first spendPriority selection procedure.
-When the resolved harness is `claude` and this home has `config/claude-cswap-auto` (or the captain set `FM_CLAUDE_CSWAP_SLOT`), load `claude-account-dispatch` so the crewmate lands on a healthy claude-swap slot rather than always the active login.
 The generic effort fallback and its precedence are owned by `harness-adapters`: explicit captain and standing configured effort win; otherwise use low for well-understood explicit work, xhigh for ambiguous investigation or design, intermediate levels proportionally, and never max without explicit captain preference.
 Do not add model-specific versions of that policy.
 
@@ -569,7 +576,6 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
 - `ask-user-authority` - load before deciding any ask-user finding.
 - `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from current quota-axi default TOON.
-- `claude-account-dispatch` - load before spawning `harness=claude` when `config/claude-cswap-auto` is on or `FM_CLAUDE_CSWAP_SLOT` is set, and when choosing among claude-swap accounts; owner of slot pick via `bin/fm-cswap-pick.sh`, not of harness routing.
 - `plan-to-fleet` - load when leaving Explore/planning for Execute: locked Lavish or prose plan ready to parallelize, `/plan-to-fleet`, or assigning harness/model/effort per slice before multi-crewmate spawn from one plan; owner of the fleet map, not of dispatch mechanics.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.

@@ -222,6 +222,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/plan-to-fleet/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/process-event-sources/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -318,6 +322,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "docs/cursor-crewmate-verification.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/documentation-audiences.md",
       "audience": "maintainer-architecture"
     },
@@ -366,6 +374,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/multi-account-quota.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/orca-backend.md",
       "audience": "operator-current"
     },
@@ -375,6 +387,10 @@
     },
     {
       "path": "docs/remote-secondmates.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/routing-policy.md",
       "audience": "operator-current"
     },
     {

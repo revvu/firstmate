@@ -46,7 +46,7 @@
         { "harness": "codex", "effort": "high" },
         { "harness": "claude", "effort": "high" }
       ],
-      "why": "Prefer a different family than the author. Codex is the standing review default; Claude only if Codex is tight."
+      "why": "Codex is the standing adversarial-review default; the next candidate is only for a hard launch error."
     },
     {
       "when": "The task is a big or ambiguous multi-file feature or risky refactor where architecture is already decided and the work is primarily implementation with remaining technical ambiguity.",
@@ -55,7 +55,7 @@
         { "harness": "cursor" },
         { "harness": "claude", "effort": "high" }
       ],
-      "why": "Codex is the mid/frontier implementer (smarter than pure speed, faster than Fable). Cursor second. Claude last to conserve Fable/Claude quota."
+      "why": "Codex owns implementation with remaining technical ambiguity. Alternatives are tried only after a hard launch error."
     },
     {
       "when": "The task is an ordinary ship: feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity.",
@@ -63,7 +63,7 @@
         { "harness": "cursor" },
         { "harness": "codex", "effort": "medium" }
       ],
-      "why": "Default implementation path. Cursor for speed; Codex when Cursor headroom is tight or the slice needs more frontier punch."
+      "why": "Cursor owns clear implementation slices for speed. Codex is the next candidate only after a hard launch error."
     }
   ],
   "default": [

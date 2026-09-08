@@ -119,7 +119,9 @@
 # releases its durable treehouse lease so the pool slot is freed,
 # never left leased forever. If the treehouse return fails, teardown leaves the
 # leased home and state in place instead of hiding a still-held lease.
-# Usage: fm-teardown.sh <task-id> [--force] [--legacy-record]
+# Usage: fm-teardown.sh <task-id> [--force] [--legacy-record] [--outcome done|failed|cancelled]
+#   --outcome records the supervisor-confirmed task result in the private dispatch
+#   ledger; bin/fm-dispatch-ledger.sh owns the schema and default classification.
 #   --force skips ordinary-task dirty and landed-work checks, skips scout report
 #   checks, and discards secondmate child work for kind=secondmate. Only use it
 #   when the captain has explicitly said to discard the work.
@@ -263,12 +265,19 @@ if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
 fi
 ID=$1
 FORCE=
+DISPATCH_OUTCOME=auto
 LEGACY_RECORD_GIVEN=0
 shift
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --force) FORCE=--force ;;
     --legacy-record) LEGACY_RECORD_GIVEN=1 ;;
+    --outcome)
+      case "${2:-}" in
+        done|failed|cancelled) DISPATCH_OUTCOME=$2; shift ;;
+        *) echo "error: --outcome requires done, failed, or cancelled" >&2; exit 2 ;;
+      esac
+      ;;
     *)
       echo "error: invalid teardown request" >&2
       exit 2
@@ -3377,6 +3386,15 @@ fm_backend_clear_transition "$BACKEND" "$STATE" "$T" || true
 [ -n "$TASK_TMP" ] && rm -rf "$TASK_TMP"
 remove_pr_poll_artifacts "$STATE" "$ID" || exit 1
 retire_busy_state "$STATE" "$ID" "$BUSY_GEN" || exit 1
+# The task metadata lock is still held. Preserve its outcome before the record
+# is retired; the ledger's incarnation key makes interrupted teardown retryable.
+if [ "$KIND" != secondmate ] && [ -z "$CLEANUP_RECOVERY" ]; then
+  if [ "$DISPATCH_OUTCOME" = auto ] && [ "$FORCE" = --force ]; then
+    DISPATCH_OUTCOME=cancelled
+  fi
+  FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-dispatch-ledger.sh" \
+    append "$META" "$STATE/$ID.status" "$DISPATCH_OUTCOME" "$PR_URL" || exit 1
+fi
 status_retire_presentation_task "$STATE" "$ID" || exit 1
 rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.exit" \
   "$STATE/$ID.pi-ext.ts" "$STATE/$ID.omp-ext.ts" "$STATE/$ID.grok-turnend-token" \

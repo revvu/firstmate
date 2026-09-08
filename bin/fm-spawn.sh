@@ -317,6 +317,8 @@
 # success line and state/<id>.meta omit them.
 # Every fresh spawn or relaunch records a new spawn_gen= incarnation token so durable
 # consumers can distinguish a replacement worker that reuses the same task id.
+# Fresh dispatches also record started_at= in UTC; relaunch preserves that start
+# for bin/fm-dispatch-ledger.sh's eventual retirement record.
 # When the home session's frozen trace-context decision is enabled (see
 # docs/configuration.md and bin/fm-trace-context-lib.sh), the meta also records
 # one W3C traceparent= carrier, the same value injected into the pane as
@@ -1522,7 +1524,7 @@ launch_template() {
     # inherited CLAUDECODE cannot outrank cursor's own marker in a process that
     # only reads the environment. Cursor exposes no effort flag, so the shared
     # effort axis is deliberately omitted and stays in task metadata only.
-    cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__) Never add an agent Co-authored-by trailer to commits or agent attribution to pull requests. Before committing, remove any agent co-author trailer from the commit message."' ;;
     # gemini (Google Gemini CLI): a positional query starts the supervised
     # interactive session and auto-submits it, so the brief rides the launch
     # command exactly as it does for claude and grok (verified: a multi-line
@@ -3625,6 +3627,9 @@ preserve_relaunch_meta() {
   [ -z "$LINEAR_ID" ] || echo "linear=$LINEAR_ID"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
+  # A relaunch keeps the original dispatch start through preserve_relaunch_meta;
+  # a legacy record without one falls back to the ledger's spawn_gen timestamp.
+  [ "$RELAUNCH" -eq 1 ] || echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   # Default-off writes no traceparent= line.
   # backend= is written only for a non-default (non-tmux) backend, so the
   # default path's meta stays byte-identical (absent backend= means tmux;
@@ -3796,50 +3801,8 @@ esac
 # Forward firstmate's own resolved store onto the claude launch so the crewmate
 # uses the same credential/config firstmate is authenticated with. Only when set;
 # an unset value is the single-store default and needs no prefix.
-#
-# Multi-account (claude-swap): when FM_CLAUDE_CSWAP_SLOT is set, or when
-# config/claude-cswap-auto is present and harness is claude, wrap the launch
-# through `cswap run <slot> -- <claude-args>` so the crewmate uses that slot's
-# session profile without changing the captain's default login. Skip forwarding
-# CLAUDE_CONFIG_DIR in that case — cswap owns it. See docs/multi-account-quota.md
-# and the claude-account-dispatch skill.
-if [ "$HARNESS" = claude ]; then
-  CSWAP_SLOT=${FM_CLAUDE_CSWAP_SLOT:-}
-  if [ -z "$CSWAP_SLOT" ] && [ -f "$FM_HOME/config/claude-cswap-auto" ]; then
-    cswap_need=general
-    case "${MODEL:-}" in
-      *fable*|*Fable*) cswap_need=fable ;;
-    esac
-    if CSWAP_PICK=$("$FM_ROOT/bin/fm-cswap-pick.sh" --need "$cswap_need" --json 2>/dev/null); then
-      CSWAP_SLOT=$(printf '%s' "$CSWAP_PICK" | python3 -c 'import json,sys; print(json.load(sys.stdin)["slot"])' 2>/dev/null || true)
-      if [ -n "$CSWAP_SLOT" ]; then
-        echo "info: claude-cswap-auto selected slot=$CSWAP_SLOT need=$cswap_need" >&2
-      fi
-    else
-      echo "warning: claude-cswap-auto enabled but fm-cswap-pick.sh could not pick a slot; launching bare claude" >&2
-    fi
-  fi
-  if [ -n "$CSWAP_SLOT" ]; then
-    if ! command -v cswap >/dev/null 2>&1; then
-      echo "error: FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT set but cswap is not on PATH" >&2
-      exit 1
-    fi
-    # Template is: ENV_ASSIGNS claude CLAUDE_ARGS...
-    # cswap run execs `claude` itself; args after -- are Claude Code flags only.
-    case "$LAUNCH" in
-      *" claude "*)
-        LAUNCH=${LAUNCH/ claude / cswap run ${CSWAP_SLOT} -- }
-        ;;
-      *)
-        echo "error: cannot wrap unexpected claude launch for cswap slot $CSWAP_SLOT" >&2
-        exit 1
-        ;;
-    esac
-    # Record for meta/debug; do not also forward CLAUDE_CONFIG_DIR.
-    FM_CLAUDE_CSWAP_SLOT=$CSWAP_SLOT
-  elif [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
-    LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
-  fi
+if [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
 fi
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")
