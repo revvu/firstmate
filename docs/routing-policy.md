@@ -39,13 +39,17 @@ Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
 | Role | Who |
 |---|---|
 | Hard questions with a known shape / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
-| An already-decided Lavish/Paper bulk edit or many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
-| Substantial UI build or redesign / major architecture or system-shape decision / any taste, layout, or visual convergence on a surface | Fable (then Opus) |
+| An already-decided Lavish/Paper bulk edit or generating many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
+| Substantial UI build or redesign / major architecture or system-shape decision / any taste, layout, or visual convergence on a surface, including choosing which visual variant wins | Fable (then Opus) |
 
 The dividing line on the first two rows is whether the edit needs judgment.
-Deciding what the artifact should say, restructuring it, or choosing among variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
+Deciding what the artifact should say, restructuring it, or choosing among non-visual variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
+Visual critique and picking which visual variant wins are not on that line at all — they are visual convergence, so they go to Fable.
 Two carve-outs stay on Opus rather than being delegated: a tiny one-line fix cheaper to do inline than to hand off, and any edit the captain explicitly wants done in the session he is talking to.
 Fable is untouched by this boundary — substantial design and visual convergence only.
+
+When two classes both describe a task, the more specific one wins; anything whose outcome is visual resolves to the visual-convergence class rather than to ordinary judgment.
+This sharpens the best-fit selection `AGENTS.md` section 4 already prescribes — it is not first-match.
 
 Do not spawn a big fleet until intent is lockable.
 
@@ -56,9 +60,9 @@ Plan locked → `/plan-to-fleet` → spawn.
 | Task class | Preferred order |
 |---|---|
 | Substantial UI build or redesign / major architecture or system-shape decision | Fable xhigh → Opus xhigh |
-| Ordinary judgment with a known shape / framing / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
-| Taste / layout / visual convergence (existing surface) | Fable high → Opus high |
-| UI fan-out (rough options) / already-decided bulk artifact edit | Cursor → Codex |
+| Ordinary judgment with a known shape / framing / non-visual critique or variant choice / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
+| Taste / layout / visual convergence (existing surface), including visual critique and choosing which visual variant wins | Fable high → Opus high |
+| UI fan-out — generating rough options / already-decided bulk artifact edit | Cursor → Codex |
 | Chore / mechanical — targeted typo, one-file fix, rote rename, even in a document | Cursor → Codex |
 | Ordinary ship | Cursor → Codex |
 | Ambiguous-but-implementable ship | Codex → Cursor → Opus |
