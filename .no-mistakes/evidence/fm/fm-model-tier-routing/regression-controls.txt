@@ -1,0 +1,33 @@
+Fail-before / pass-after controls for the three test-side changes.
+Each control reverts exactly one file to base 92d9db5, reruns the suite, then
+restores it. Every restore left the worktree clean (git status --porcelain empty).
+
+--- 1. bin/fm-tasks-axi-lib.sh memo idempotence ------------------------
+suite: tests/fm-bootstrap.test.sh
+BEFORE (library at base): exit 1, aborts mid-run
+not ok - the handed-in verdict was ignored (unexpected: 'MISSING: tasks-axi')
+  cases reached: 25 ok (the fail exits the script, so the 3 later cases --
+  including BOTH crew-dispatch validation cases -- never ran)
+AFTER  (this change): exit 0, 28 ok, all cases reached:
+  ok - bootstrap: the tasks-axi compatibility verdict travels exactly one process hop
+  ok - bootstrap surfaces active crew-dispatch rules only as verbose BOOTSTRAP_INFO
+  ok - bootstrap validates crew-dispatch.json and reports malformed or unverified configs
+
+--- 2. tests/fixtures.sh exit-record proxy plumbing --------------------
+suite: tests/fm-spawn-dispatch-profile.test.sh
+BEFORE (fixtures at base): exit 1
+  not ok - arm failure did not warn (missing: 'could not be armed')
+  (FM_TEST_ROOT_OVERRIDE was consumed nowhere, so the arm-failure proxy never
+   replaced the real recorder and the test could not fail)
+AFTER  (this change): exit 0, 48 ok, including:
+  ok - no --model/--effort records defaults and types the claude launch instructions
+  ok - composed arm-failure respawn leaves no stale exit record
+  ok - spawn refuses a failed exit-record retirement
+
+--- 3. new tests/fm-crew-dispatch-example.test.sh ----------------------
+BEFORE (docs/examples/crew-dispatch.json at base): exit 1
+  not ok - a Claude profile resolved to the machine's ambient model instead of a pinned one (unexpected: 'claude/default')
+AFTER  (this change): exit 0
+  ok - the shipped crew-dispatch example activates cleanly through bootstrap's validator
+  ok - every Claude profile in the shipped example pins its model explicitly
+  ok - Fable is reserved to two classes, each falling back to Opus rather than a speed-class harness

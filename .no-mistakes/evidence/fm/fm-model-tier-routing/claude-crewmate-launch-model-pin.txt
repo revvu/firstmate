@@ -1,0 +1,26 @@
+Crewmate launch commands for the Claude profiles the shipped example prescribes
+(fake pane captures the literal command firstmate sends; no harness is started)
+
+rule 1  substantial design      -> claude / fable / xhigh
+  recorded profile : window=firstmate:fm-ev-fable-xhigh endpoint_task_id=ev-fable-xhigh worktree=$TMP/ev-fable-xhigh/wt project=$TMP/ev-fable-xhigh/project harness=claude kind=ship mode=no-mistakes yolo=off tasktmp=/tmp/fm-ev-fable-xhigh model=fable effort=xhigh busy_gen=g1788978952.87753.25764 spawn_gen=s1788978952.85964.19812 
+  launch command   : env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}' --model 'fable' --effort 'xhigh' "$('$FM_ROOT/bin/fm-operational-input.sh' encode launch-brief < '$HOME/data/ev-fable-xhigh/launch-brief.md')"; '$FM_ROOT/bin/fm-exit-record.sh' record '$HOME/state' 'ev-fable-xhigh' "$?" >/dev/null 2>&1 || true
+
+rule 2  ordinary judgment       -> claude / opus  / high
+  recorded profile : window=firstmate:fm-ev-opus-high endpoint_task_id=ev-opus-high worktree=$TMP/ev-opus-high/wt project=$TMP/ev-opus-high/project harness=claude kind=ship mode=no-mistakes yolo=off tasktmp=/tmp/fm-ev-opus-high model=opus effort=high busy_gen=g1788978956.89901.20679 spawn_gen=s1788978956.88814.15023 
+  launch command   : env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}' --model 'opus' --effort 'high' "$('$FM_ROOT/bin/fm-operational-input.sh' encode launch-brief < '$HOME/data/ev-opus-high/launch-brief.md')"; '$FM_ROOT/bin/fm-exit-record.sh' record '$HOME/state' 'ev-opus-high' "$?" >/dev/null 2>&1 || true
+
+rule 3  visual convergence      -> claude / fable / high
+  recorded profile : window=firstmate:fm-ev-fable-high endpoint_task_id=ev-fable-high worktree=$TMP/ev-fable-high/wt project=$TMP/ev-fable-high/project harness=claude kind=ship mode=no-mistakes yolo=off tasktmp=/tmp/fm-ev-fable-high model=fable effort=high busy_gen=g1788978959.91682.31377 spawn_gen=s1788978959.90636.20129 
+  launch command   : env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}' --model 'fable' --effort 'high' "$('$FM_ROOT/bin/fm-operational-input.sh' encode launch-brief < '$HOME/data/ev-fable-high/launch-brief.md')"; '$FM_ROOT/bin/fm-exit-record.sh' record '$HOME/state' 'ev-fable-high' "$?" >/dev/null 2>&1 || true
+
+default fallback lane           -> claude / opus  / medium
+  recorded profile : window=firstmate:fm-ev-opus-medium endpoint_task_id=ev-opus-medium worktree=$TMP/ev-opus-medium/wt project=$TMP/ev-opus-medium/project harness=claude kind=ship mode=no-mistakes yolo=off tasktmp=/tmp/fm-ev-opus-medium model=opus effort=medium busy_gen=g1788978963.94011.985 spawn_gen=s1788978963.92448.12411 
+  launch command   : env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}' --model 'opus' --effort 'medium' "$('$FM_ROOT/bin/fm-operational-input.sh' encode launch-brief < '$HOME/data/ev-opus-medium/launch-brief.md')"; '$FM_ROOT/bin/fm-exit-record.sh' record '$HOME/state' 'ev-opus-medium' "$?" >/dev/null 2>&1 || true
+
+
+Why this is the end-user surface: this is the literal command firstmate types
+into the crewmate pane. Before this change the shipped example resolved Claude
+profiles to claude/default, which emits NO --model flag at all and lets the
+crewmate inherit whatever model the machine's ambient default happens to be.
+Every Claude lane now carries an explicit --model, which is the point of the
+captain's request.

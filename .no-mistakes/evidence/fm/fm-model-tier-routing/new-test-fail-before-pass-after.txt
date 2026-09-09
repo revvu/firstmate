@@ -1,0 +1,19 @@
+$ # fail-before: put back the pre-change docs/examples/crew-dispatch.json (base 92d9db5) and run the new targeted test
+ok - the shipped crew-dispatch example activates cleanly through bootstrap's validator
+not ok - a Claude profile resolved to the machine's ambient model instead of a pinned one (unexpected: 'claude/default')
+--- output ---
+BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+BOOTSTRAP_INFO: crew dispatch rule: The task is design, architecture, product framing, or asking the captain clarifying questions: system shape, API boundaries, tradeoff analysis, Lavish planning judgment, or Explore-mode hard questions. Not bulk implementation. -> quota-balanced[claude/fable/high, claude/default/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is frontend taste or layout cleanup: polish visual hierarchy, spacing, brand feel, or converge after exploratory UI variants. Not a bulk fan-out of many rough options. -> quota-balanced[claude/fable/high, claude/default/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is exploratory UI or Paper fan-out: generate several rough variants or surfaces quickly so the captain can compare, not a final taste pass. -> quota-balanced[cursor, codex/default/medium]
+BOOTSTRAP_INFO: crew dispatch rule: The task is a chore: docs, CI hygiene, Linear hygiene, renames, formatting, dependency bumps, or other low-ambiguity housekeeping. -> quota-balanced[cursor, codex/default/low]
+BOOTSTRAP_INFO: crew dispatch rule: The task is a trivial mechanical edit: targeted typo, one-file fix, rote rename, or similarly narrow low-ambiguity coding. -> quota-balanced[cursor, codex/default/low]
+BOOTSTRAP_INFO: crew dispatch rule: The task is adversarial review, no-mistakes review, or a second-opinion pass on code another model authored. -> quota-balanced[codex/default/high, claude/default/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is a big or ambiguous multi-file feature or risky refactor where architecture is already decided and the work is primarily implementation with remaining technical ambiguity. -> quota-balanced[codex/default/high, cursor, claude/default/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is an ordinary ship: feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity. -> quota-balanced[cursor, codex/default/medium]
+BOOTSTRAP_INFO: crew dispatch default: quota-balanced[cursor, codex/default/medium, claude/default/medium]
+
+$ # pass-after: restore the change under review and run the same test
+ok - the shipped crew-dispatch example activates cleanly through bootstrap's validator
+ok - every Claude profile in the shipped example pins its model explicitly
+ok - Fable is reserved to two classes, each falling back to Opus rather than a speed-class harness

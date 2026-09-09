@@ -1,0 +1,7 @@
+$ # fail-before: the pre-change inventory (base 92d9db5) against the same tracked-docs check
+fm-doc-audience-check: unclassified: .agents/skills/claude-account-dispatch/SKILL.md, .agents/skills/plan-to-fleet/SKILL.md, docs/cursor-crewmate-verification.md, docs/multi-account-quota.md, docs/routing-policy.md
+exit=1
+
+$ # pass-after: the inventory as changed
+fm-doc-audience-check: ok surfaces=103 local_links=365
+exit=0
