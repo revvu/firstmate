@@ -27,9 +27,11 @@ Standing background: [`docs/multi-account-quota.md`](../../../docs/multi-account
 ## Procedure
 
 1. Confirm `cswap` is on PATH and `~/.claude-swap-backup/sequence.json` plus `cache/usage.json` exist (refresh with `cswap list` if usage looks stale).
-2. Decide need:
-   - `fable` when the spawn model is Fable or the task is design / architecture / taste / hard questions.
-   - `general` otherwise.
+2. Decide need from the **resolved concrete spawn model**, never from the task class — `fm-spawn` derives it the same way (`bin/fm-spawn.sh`: model matching `*fable*` -> `fable`, every other model -> `general`), and the manual path must agree with it:
+   - `fable` when the resolved `--model` is Fable.
+   - `general` for every other resolved model, including Opus.
+
+   Resolve the model first via `crew-dispatch.json`. A substantial-design slice whose Fable window is exhausted falls back to Opus xhigh, so its need is `general`. Slot selection itself belongs to the picker — consult it rather than reasoning about which slot ought to win, and do not claim a slot was selected unless the launch actually went through the `cswap run` path.
 3. Run `"$FM_ROOT/bin/fm-cswap-pick.sh" --need <need> --json` and show the pick (slot, email, score, whether it is already the active login).
 4. Launch path:
    - **Preferred:** let `fm-spawn` wrap via auto config — ensure `config/claude-cswap-auto` exists (any content), then spawn normally with `--harness claude`. Spawn prints `info: claude-cswap-auto selected slot=…`.

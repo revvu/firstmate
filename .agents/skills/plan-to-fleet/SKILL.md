@@ -29,7 +29,8 @@ Do **not** load for Explore-mode Lavish iteration.
 
 ## Hierarchy reminder
 
-- **Fable** — questions, design, architecture, taste converge.
+- **Opus** — standing Claude model: questions with a known shape, framing, planning, ordinary judgment, artifact/Lavish/Paper edits where the content is still the open question, Claude-lane implementation (pin explicitly).
+- **Fable** — substantial design and visual convergence (real UI/product-surface build or redesign, major system-shape, and all taste/layout convergence on an existing surface); Opus is the only fallback.
 - **Codex** — frontier implement + adversarial review.
 - **Cursor** — speed implement (chores, mechanical, ordinary ships, UI fan-out).
 
@@ -38,7 +39,7 @@ Do **not** load for Explore-mode Lavish iteration.
 1. Name project + delivery posture.
 2. Confirm leaving Explore for Execute.
 3. Read the plan artifact.
-4. Run `quota-axi --json` once; optionally `cswap list` when Claude/Fable slices exist.
+4. Run `quota-axi --json` once; optionally `cswap list` when Claude slices exist. Key `--need` on the slice's resolved concrete model, not its task class (`fable` only when the resolved model is Fable; `general` for Opus and every other model) — a substantial-design slice that fell back to Opus xhigh needs `general`.
 5. Read `config/crew-dispatch.json` or `docs/examples/crew-dispatch.json`.
 
 ## Produce the fleet map
@@ -48,16 +49,18 @@ Do **not** load for Explore-mode Lavish iteration.
 3. **Per slice** — id, type (`ship`|`scout`|`chore`|`taste`|`fan-out`|`design`), depends-on, recommended harness/model/effort, fallback, definition of done.
 4. **Review path** — no-mistakes then CodeRabbit; prefer Codex for review.
 5. **Quota note** — Cursor/Codex from quota-axi; Claude slots from cswap when relevant.
+   Remember `model:fable` is a named model sub-window bounded by `claude,all_models`, so account-level headroom is not Fable headroom.
 
 | Slice type | Default |
 |---|---|
-| design / architecture / questions | Claude Fable high |
-| taste / layout | Claude Fable high |
-| fan-out | Cursor medium → Codex |
-| chore / mechanical | Cursor low → Codex |
-| ordinary ship | Cursor medium → Codex |
-| ambiguous implement | Codex high → Cursor → Claude |
-| review | Codex high |
+| substantial UI build or redesign / major architecture or system-shape decision | Claude Fable xhigh → Opus xhigh |
+| ordinary judgment / framing / questions with a known shape / artifact edits needing judgment | Claude Opus high |
+| taste / layout / visual convergence (existing surface) | Claude Fable high → Opus high |
+| fan-out / already-decided bulk artifact edit | Cursor → Codex medium |
+| chore / mechanical | Cursor → Codex low |
+| ordinary ship | Cursor → Codex medium |
+| ambiguous implement | Codex high → Cursor → Claude Opus high |
+| review | Codex high → Claude Opus high |
 
 ## Captain edit gate
 
@@ -66,11 +69,11 @@ Show the map; wait for approval unless they already said spawn-as-recommended.
 ## After approval
 
 Spawn via `bin/fm-spawn.sh` with concrete `--harness` / `--model` / `--effort` after section 4 + `quota-array-dispatch`.
-Until multi-account Claude dispatch lands, do not claim a specific cswap slot was selected unless you actually launched through `cswap run <n>`.
+Do not claim a specific cswap slot was selected unless you actually launched through `cswap run <n>`.
 
 ## Anti-patterns
 
-- Spawning all implementation onto Fable.
-- Using Fable for bulk variant generation.
+- Spawning all implementation onto Fable (or onto Claude when Cursor/Codex fit).
+- Using Fable for bulk variant generation, small Lavish/Paper document edits, or routine framing (converging a surface on its final look is Fable work, though).
 - Mid-flight `cswap` of a live agent instead of assigning implement work to Cursor/Codex.
 - Starting Execute while major product forks are still open — finish Explore or schedule a design scout first.

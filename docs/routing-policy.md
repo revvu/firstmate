@@ -13,13 +13,23 @@ Related owners:
 
 ## Model hierarchy
 
+Claude has an explicit **model** axis inside the Claude harness: pin the model on every Claude profile rather than inheriting the machine's ambient default.
+That includes the Claude profile no dispatch rule covers: a Claude secondmate takes its model from the primary's own `config/secondmate-harness` line, so pin it there too (`claude opus`; [`docs/configuration.md`](configuration.md) owns that file's format).
+
 | Tier | Who | Job |
 |---|---|---|
-| Judgment / design | Claude **Fable** (then strong Claude) | Ask the captain hard questions; design; architecture; taste/layout converge |
+| Standing Claude | Claude **Opus** (pinned explicitly) | Orchestration, judgment, architecture with a known shape, framing, planning, judgment-bearing artifact/Lavish/Paper edits, review, Claude-lane implementation |
+| Substantial design + visual convergence | Claude **Fable** (then Opus) | Real UI or product-surface build/redesign; major architecture or system-shape decisions; all frontend taste, layout, and visual convergence on an existing surface |
 | Frontier implement | **Codex** | Smart implementation when the path is mostly decided but still needs a strong coder; adversarial review |
 | Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out (Cursor has **no effort flag** — omit `effort` in dispatch; optionally pin `--model` like `composer-2.5-fast`) |
 
-**Implementers are Cursor + Codex.** Fable is not the default coder.
+**Implementers are Cursor + Codex.** Claude is judgment and reserved design, not the default coder.
+
+**Fable is reserved.** Explicitly not Fable: small edits to an existing Lavish or Paper document, routine framing, ordinary clarifying questions, bulk fan-out of rough options to compare, review, or implementation.
+Taste and layout polish is Fable — the captain's 2026-09-09 correction put all visual convergence back on Fable, not just redesigns.
+
+`model:fable` is a named model sub-window bounded by the `claude,all_models` account window, so a provider-level percentage does not describe Fable's headroom and vice versa.
+Fable being tight is never a reason to downgrade a genuine substantial-design or visual-convergence task below strong-reasoning class; Opus is its only fallback (`AGENTS.md` section 4).
 
 ## Modes
 
@@ -29,9 +39,18 @@ Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
 
 | Role | Who |
 |---|---|
-| Hard questions / framing | Fable (or high-effort Claude) |
-| Fast Lavish/Paper edits and many rough variants | Cursor CLI (or Cursor crewmate once dispatched) |
-| Final taste converge | Fable |
+| Hard questions with a known shape / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
+| An already-decided Lavish/Paper bulk edit or generating many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
+| Substantial UI build or redesign / major architecture or system-shape decision / any taste, layout, or visual convergence on a surface, including choosing which visual variant wins | Fable (then Opus) |
+
+The dividing line on the first two rows is whether the edit needs judgment.
+Deciding what the artifact should say, restructuring it, or choosing among non-visual variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
+Visual critique and picking which visual variant wins are not on that line at all — they are visual convergence, so they go to Fable.
+Two carve-outs stay on Opus rather than being delegated: a tiny one-line fix cheaper to do inline than to hand off, and any edit the captain explicitly wants done in the session he is talking to.
+Fable is untouched by this boundary — substantial design and visual convergence only.
+
+When two classes both describe a task, the more specific one wins; anything whose outcome is visual resolves to the visual-convergence class rather than to ordinary judgment.
+This sharpens the best-fit selection `AGENTS.md` section 4 already prescribes — it is not first-match.
 
 Do not spawn a big fleet until intent is lockable.
 
@@ -41,13 +60,15 @@ Plan locked → `/plan-to-fleet` → spawn.
 
 | Task class | Preferred order |
 |---|---|
-| Design / architecture / clarifying questions | Fable → Claude high |
-| Taste / layout cleanup | Fable → Claude high |
-| UI fan-out (rough options) | Cursor → Codex |
-| Chore / mechanical | Cursor → Codex |
+| Substantial UI build or redesign / major architecture or system-shape decision | Fable xhigh → Opus xhigh |
+| Ordinary judgment with a known shape / framing / non-visual critique or variant choice / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
+| Taste / layout / visual convergence (existing surface), including visual critique and choosing which visual variant wins | Fable high → Opus high |
+| UI fan-out — generating rough options / already-decided bulk artifact edit | Cursor → Codex |
+| Chore / mechanical — targeted typo, one-file fix, rote rename, even in a document | Cursor → Codex |
 | Ordinary ship | Cursor → Codex |
-| Ambiguous-but-implementable ship | Codex → Cursor → Claude |
-| Adversarial review | Codex → Claude |
+| Ambiguous-but-implementable ship | Codex → Cursor → Opus |
+| Adversarial review | Codex → Opus |
+| Agent-driven computer use | Codex high (park if Codex credits are out; no silent Fable fallback) |
 
 Done units (Gallopify): merged PR **and** Linear issue closed together when Linear owns the work.
 Quality: `no-mistakes` local gate, then CodeRabbit on the PR.
@@ -70,6 +91,7 @@ Quality: `no-mistakes` local gate, then CodeRabbit on the PR.
 ## Weekly matrix edit checklist
 
 1. Edit this file.
-2. Mirror into `docs/examples/crew-dispatch.json`.
+2. Mirror into `docs/examples/crew-dispatch.json`, then run [`tests/fm-crew-dispatch-example.test.sh`](../tests/fm-crew-dispatch-example.test.sh).
+   It drives the shipped example through bootstrap's validator and pins its Claude model routing (every Claude profile explicit, Fable reserved to two classes that each fall back to Opus), so a matrix change that moves those facts has to update the test's expectation with it.
 3. Copy into each home’s `config/crew-dispatch.json`.
-4. Smoke one Cursor chore spawn, one Codex implement spawn, one Fable design scout.
+4. Smoke one Cursor chore spawn, one Codex implement spawn, one Fable substantial-design scout.
