@@ -55,10 +55,10 @@ Plan locked → `/plan-to-fleet` → spawn.
 | Task class | Preferred order |
 |---|---|
 | Substantial design / major architecture / active-build taste | Fable xhigh → Opus xhigh |
-| Ordinary judgment / framing / artifact edits needing judgment | Opus high |
+| Ordinary judgment / framing / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
 | Taste / layout polish (shipped surface) | Opus high → Cursor |
 | UI fan-out (rough options) / already-decided bulk artifact edit | Cursor → Codex |
-| Chore / mechanical | Cursor → Codex |
+| Chore / mechanical — targeted typo, one-file fix, rote rename, even in a document | Cursor → Codex |
 | Ordinary ship | Cursor → Codex |
 | Ambiguous-but-implementable ship | Codex → Cursor → Opus |
 | Adversarial review | Codex → Opus |
