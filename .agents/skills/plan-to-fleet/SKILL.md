@@ -29,7 +29,7 @@ Do **not** load for Explore-mode Lavish iteration.
 
 ## Hierarchy reminder
 
-- **Opus** — standing Claude model: questions, framing, planning, ordinary judgment, artifact/Lavish/Paper edits where the content is still the open question, Claude-lane implementation (pin explicitly).
+- **Opus** — standing Claude model: questions with a known shape, framing, planning, ordinary judgment, artifact/Lavish/Paper edits where the content is still the open question, Claude-lane implementation (pin explicitly).
 - **Fable** — substantial design and visual convergence (real UI/product-surface build or redesign, major system-shape, and all taste/layout convergence on an existing surface); Opus is the only fallback.
 - **Codex** — frontier implement + adversarial review.
 - **Cursor** — speed implement (chores, mechanical, ordinary ships, UI fan-out).
@@ -53,8 +53,8 @@ Do **not** load for Explore-mode Lavish iteration.
 
 | Slice type | Default |
 |---|---|
-| substantial design / major architecture | Claude Fable xhigh → Opus xhigh |
-| ordinary judgment / framing / questions / artifact edits needing judgment | Claude Opus high |
+| substantial UI build or redesign / major architecture or system-shape decision | Claude Fable xhigh → Opus xhigh |
+| ordinary judgment / framing / questions with a known shape / artifact edits needing judgment | Claude Opus high |
 | taste / layout / visual convergence (existing surface) | Claude Fable high → Opus high |
 | fan-out / already-decided bulk artifact edit | Cursor → Codex medium |
 | chore / mechanical | Cursor → Codex low |
@@ -69,7 +69,7 @@ Show the map; wait for approval unless they already said spawn-as-recommended.
 ## After approval
 
 Spawn via `bin/fm-spawn.sh` with concrete `--harness` / `--model` / `--effort` after section 4 + `quota-array-dispatch`.
-Until multi-account Claude dispatch lands, do not claim a specific cswap slot was selected unless you actually launched through `cswap run <n>`.
+Do not claim a specific cswap slot was selected unless you actually launched through `cswap run <n>`.
 
 ## Anti-patterns
 

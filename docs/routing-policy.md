@@ -38,9 +38,9 @@ Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
 
 | Role | Who |
 |---|---|
-| Hard questions / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
+| Hard questions with a known shape / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
 | An already-decided Lavish/Paper bulk edit or many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
-| Substantial redesign / any taste, layout, or visual convergence on a surface | Fable (then Opus) |
+| Substantial UI build or redesign / major architecture or system-shape decision / any taste, layout, or visual convergence on a surface | Fable (then Opus) |
 
 The dividing line on the first two rows is whether the edit needs judgment.
 Deciding what the artifact should say, restructuring it, or choosing among variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
@@ -55,8 +55,8 @@ Plan locked → `/plan-to-fleet` → spawn.
 
 | Task class | Preferred order |
 |---|---|
-| Substantial design / major architecture | Fable xhigh → Opus xhigh |
-| Ordinary judgment / framing / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
+| Substantial UI build or redesign / major architecture or system-shape decision | Fable xhigh → Opus xhigh |
+| Ordinary judgment with a known shape / framing / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
 | Taste / layout / visual convergence (existing surface) | Fable high → Opus high |
 | UI fan-out (rough options) / already-decided bulk artifact edit | Cursor → Codex |
 | Chore / mechanical — targeted typo, one-file fix, rote rename, even in a document | Cursor → Codex |
