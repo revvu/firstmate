@@ -25,7 +25,10 @@
 # subprocesses, and one session start needs the same verdict twice: once in
 # bin/fm-session-start.sh's backlog listing and once in the bin/fm-bootstrap.sh
 # child it runs. Two reuse layers collapse that to a single probe:
-#   - Within a process the first probe's answer is memoised.
+#   - Within a process the first probe's answer is memoised. Several libraries
+#     source this file, so one process sources it more than once; the memo
+#     assignment is idempotent across re-sourcing, or the second source would
+#     discard a verdict the first one already established.
 #   - Across ONE process hop, a parent that already holds the verdict passes it
 #     in FM_TASKS_AXI_COMPATIBLE=0|1. Sourcing this file CONSUMES that variable
 #     (it is unset from the environment and kept only as a private shell
@@ -38,7 +41,7 @@
 
 FM_TASKS_AXI_MIN=0.2.4
 
-FM_TASKS_AXI_COMPATIBLE_MEMO=${FM_TASKS_AXI_COMPATIBLE:-}
+FM_TASKS_AXI_COMPATIBLE_MEMO=${FM_TASKS_AXI_COMPATIBLE:-${FM_TASKS_AXI_COMPATIBLE_MEMO:-}}
 unset FM_TASKS_AXI_COMPATIBLE
 case "$FM_TASKS_AXI_COMPATIBLE_MEMO" in
   0|1) ;;
