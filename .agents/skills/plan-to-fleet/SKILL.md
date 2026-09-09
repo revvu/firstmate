@@ -29,7 +29,7 @@ Do **not** load for Explore-mode Lavish iteration.
 
 ## Hierarchy reminder
 
-- **Opus** — standing Claude model: questions, framing, planning, ordinary judgment, small artifact/Lavish/Paper edits, Claude-lane implementation (pin explicitly).
+- **Opus** — standing Claude model: questions, framing, planning, ordinary judgment, artifact/Lavish/Paper edits where the content is still the open question, Claude-lane implementation (pin explicitly).
 - **Fable** — substantial design only (real UI/product-surface build or redesign, major system-shape, final taste on a surface actively being built); Opus xhigh is the fallback.
 - **Codex** — frontier implement + adversarial review.
 - **Cursor** — speed implement (chores, mechanical, ordinary ships, UI fan-out).
@@ -54,9 +54,9 @@ Do **not** load for Explore-mode Lavish iteration.
 | Slice type | Default |
 |---|---|
 | substantial design / major architecture / active-build taste | Claude Fable xhigh → Opus xhigh |
-| ordinary judgment / framing / questions / small artifact edits | Claude Opus high |
+| ordinary judgment / framing / questions / artifact edits needing judgment | Claude Opus high |
 | taste / layout polish (shipped surface) | Claude Opus high → Cursor |
-| fan-out | Cursor medium → Codex |
+| fan-out / already-decided bulk artifact edit | Cursor medium → Codex |
 | chore / mechanical | Cursor low → Codex |
 | ordinary ship | Cursor medium → Codex |
 | ambiguous implement | Codex high → Cursor → Claude Opus high |

@@ -17,7 +17,7 @@ Claude has an explicit **model** axis inside the Claude harness: pin the model o
 
 | Tier | Who | Job |
 |---|---|---|
-| Standing Claude | Claude **Opus** (pinned explicitly) | Orchestration, judgment, architecture with a known shape, framing, planning, artifact/Lavish/Paper edits, review, Claude-lane implementation |
+| Standing Claude | Claude **Opus** (pinned explicitly) | Orchestration, judgment, architecture with a known shape, framing, planning, judgment-bearing artifact/Lavish/Paper edits, review, Claude-lane implementation |
 | Substantial design | Claude **Fable** (then Opus xhigh) | Real UI or product-surface build/redesign; major architecture or system-shape decisions; final taste converge on a surface actively being built |
 | Frontier implement | **Codex** | Smart implementation when the path is mostly decided but still needs a strong coder; adversarial review |
 | Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out (Cursor has **no effort flag** — omit `effort` in dispatch; optionally pin `--model` like `composer-2.5-fast`) |
@@ -37,9 +37,14 @@ Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
 
 | Role | Who |
 |---|---|
-| Hard questions / framing / ordinary Lavish or Paper edits | Opus (high) |
-| Fast Lavish/Paper edits and many rough variants | Cursor CLI (or Cursor crewmate once dispatched) |
+| Hard questions / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
+| An already-decided Lavish/Paper bulk edit or many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
 | Substantial redesign / final taste on a surface being built | Fable (then Opus xhigh) |
+
+The dividing line on the first two rows is whether the edit needs judgment.
+Deciding what the artifact should say, restructuring it, or choosing among variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
+Two carve-outs stay on Opus rather than being delegated: a tiny one-line fix cheaper to do inline than to hand off, and any edit the captain explicitly wants done in the session he is talking to.
+Fable is untouched by this boundary — substantial design only.
 
 Do not spawn a big fleet until intent is lockable.
 
@@ -50,9 +55,9 @@ Plan locked → `/plan-to-fleet` → spawn.
 | Task class | Preferred order |
 |---|---|
 | Substantial design / major architecture / active-build taste | Fable xhigh → Opus xhigh |
-| Ordinary judgment / framing / small artifact edits | Opus high |
+| Ordinary judgment / framing / artifact edits needing judgment | Opus high |
 | Taste / layout polish (shipped surface) | Opus high → Cursor |
-| UI fan-out (rough options) | Cursor → Codex |
+| UI fan-out (rough options) / already-decided bulk artifact edit | Cursor → Codex |
 | Chore / mechanical | Cursor → Codex |
 | Ordinary ship | Cursor → Codex |
 | Ambiguous-but-implementable ship | Codex → Cursor → Opus |

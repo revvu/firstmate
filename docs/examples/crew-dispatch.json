@@ -17,7 +17,7 @@
       "why": "Captain 2026-09-09: Fable is RESERVED for substantial design work only - real UI building and redesign - because the weekly Fable model window is the scarcest resource in the fleet. Opus is the fallback when Fable is tight or exhausted; never let a Fable-tight window silently downgrade a genuine design task below strong-reasoning class (AGENTS.md section 4)."
     },
     {
-      "when": "The task is ordinary judgment work that is NOT substantial UI/redesign building: architecture questions with a known shape, API boundaries, tradeoff analysis, product framing, clarifying questions to the captain, planning and Lavish/Paper plan iteration, critiquing an artifact, or a small edit to an existing document or board.",
+      "when": "The task is ordinary judgment work that is NOT substantial UI/redesign building: architecture questions with a known shape, API boundaries, tradeoff analysis, product framing, clarifying questions to the captain, planning and Lavish/Paper plan iteration, critiquing an artifact, or an edit to an existing document or board where the edit itself needs judgment - deciding what the artifact should say, restructuring it, or choosing among variants. Also this rule for a tiny one-line fix cheaper to do inline than to hand off, and whenever the captain explicitly wants the edit done in the session he is talking to. An already-decided, mechanical bulk edit is NOT this rule - that is the speed-class fan-out/chore rules below.",
       "use": [
         {
           "harness": "claude",
@@ -25,7 +25,7 @@
           "effort": "high"
         }
       ],
-      "why": "Captain 2026-09-09: Opus is the standing Claude model for judgment, orchestration, and everything short of substantial design. Do not spend the Fable window here - explicitly not on Lavish/Paper document edits or routine framing."
+      "why": "Captain 2026-09-09: Opus is the standing Claude model for judgment, orchestration, and everything short of substantial design. Do not spend the Fable window here - explicitly not on Lavish/Paper document edits or routine framing. The line against Cursor is whether the content is the open question or just the typing: judgment-bearing edits are Opus, settled mechanical edits go to Cursor so Claude quota stays on judgment."
     },
     {
       "when": "The task is frontend taste or layout cleanup on an existing surface: polish visual hierarchy, spacing, or brand feel. Not a bulk fan-out of rough options, and not a substantial redesign (that is rule 1).",
@@ -42,7 +42,7 @@
       "why": "Captain 2026-09-09: incremental polish is Opus work, not Fable work. Fable only re-enters when the task becomes a real redesign."
     },
     {
-      "when": "The task is exploratory UI or Paper fan-out: generate several rough variants or surfaces quickly so the captain can compare, not a final taste pass.",
+      "when": "The task is exploratory UI or Paper fan-out, or an already-decided artifact edit: generate several rough variants or surfaces quickly so the captain can compare, or apply a settled bulk edit to existing Lavish/Paper HTML where the content is decided and only the typing remains. Not a final taste pass, and not an edit whose content is still the open question (that is rule 2).",
       "use": [
         {
           "harness": "cursor"

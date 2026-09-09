@@ -31,7 +31,7 @@ Standing background: [`docs/multi-account-quota.md`](../../../docs/multi-account
    - `fable` when the resolved `--model` is Fable.
    - `general` for every other resolved model, including Opus.
 
-   Resolve the model first via `crew-dispatch.json`. A substantial-design slice whose Fable window is exhausted falls back to Opus xhigh, so its need is `general`: pick the slot with the best general (5h / 7d) headroom, not a Fable-scoped one.
+   Resolve the model first via `crew-dispatch.json`. A substantial-design slice whose Fable window is exhausted falls back to Opus xhigh, so its need is `general`. `general` keys on the **window, not the slot**: the picker ranks every enabled slot by its general (5h / 7d) headroom and ignores the Fable scope entirely, so a slot that also carries a Fable scope stays eligible and wins whenever its 5h / 7d headroom is best.
 3. Run `"$FM_ROOT/bin/fm-cswap-pick.sh" --need <need> --json` and show the pick (slot, email, score, whether it is already the active login).
 4. Launch path:
    - **Preferred:** let `fm-spawn` wrap via auto config — ensure `config/claude-cswap-auto` exists (any content), then spawn normally with `--harness claude`. Spawn prints `info: claude-cswap-auto selected slot=…`.
