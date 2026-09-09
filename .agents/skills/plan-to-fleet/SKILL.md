@@ -39,7 +39,7 @@ Do **not** load for Explore-mode Lavish iteration.
 1. Name project + delivery posture.
 2. Confirm leaving Explore for Execute.
 3. Read the plan artifact.
-4. Run `quota-axi --json` once; optionally `cswap list` when Claude slices exist (use `--need fable` only for substantial-design slices).
+4. Run `quota-axi --json` once; optionally `cswap list` when Claude slices exist. Key `--need` on the slice's resolved concrete model, not its task class (`fable` only when the resolved model is Fable; `general` for Opus and every other model) — a substantial-design slice that fell back to Opus xhigh needs `general`.
 5. Read `config/crew-dispatch.json` or `docs/examples/crew-dispatch.json`.
 
 ## Produce the fleet map
