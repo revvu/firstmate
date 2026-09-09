@@ -11,4 +11,4 @@ This fork now includes Kun Chen’s verified Cursor adapter:
 
 Standing dispatch prefers Cursor for speed-class work; see `docs/routing-policy.md` and `docs/examples/crew-dispatch.json`.
 
-Remaining gap is **multi-account Claude selection** (cswap × quota-axi), not Cursor verification — see `docs/multi-account-quota.md`.
+Multi-account Claude slot selection (cswap × quota-axi) has since shipped too — see `docs/multi-account-quota.md` for what is built and what is not.

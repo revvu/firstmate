@@ -14,6 +14,7 @@ Related owners:
 ## Model hierarchy
 
 Claude has an explicit **model** axis inside the Claude harness: pin the model on every Claude profile rather than inheriting the machine's ambient default.
+That includes the Claude profile no dispatch rule covers: a Claude secondmate takes its model from the primary's own `config/secondmate-harness` line, so pin it there too (`claude opus`; [`docs/configuration.md`](configuration.md) owns that file's format).
 
 | Tier | Who | Job |
 |---|---|---|
@@ -90,6 +91,7 @@ Quality: `no-mistakes` local gate, then CodeRabbit on the PR.
 ## Weekly matrix edit checklist
 
 1. Edit this file.
-2. Mirror into `docs/examples/crew-dispatch.json`.
+2. Mirror into `docs/examples/crew-dispatch.json`, then run [`tests/fm-crew-dispatch-example.test.sh`](../tests/fm-crew-dispatch-example.test.sh).
+   It drives the shipped example through bootstrap's validator and pins its Claude model routing (every Claude profile explicit, Fable reserved to two classes that each fall back to Opus), so a matrix change that moves those facts has to update the test's expectation with it.
 3. Copy into each home’s `config/crew-dispatch.json`.
 4. Smoke one Cursor chore spawn, one Codex implement spawn, one Fable substantial-design scout.
