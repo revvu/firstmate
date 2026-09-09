@@ -28,8 +28,9 @@ Standing background: [`docs/multi-account-quota.md`](../../../docs/multi-account
 
 1. Confirm `cswap` is on PATH and `~/.claude-swap-backup/sequence.json` plus `cache/usage.json` exist (refresh with `cswap list` if usage looks stale).
 2. Decide need:
-   - `fable` when the spawn model is Fable or the task is design / architecture / taste / hard questions.
-   - `general` otherwise.
+   - `fable` when the spawn model is Fable or the task is substantial design (real UI/product-surface build or redesign, major system-shape, or final taste on a surface actively being built).
+   - `general` otherwise, including Opus judgment, framing, small artifact edits, review, and Claude-lane implementation.
+
 3. Run `"$FM_ROOT/bin/fm-cswap-pick.sh" --need <need> --json` and show the pick (slot, email, score, whether it is already the active login).
 4. Launch path:
    - **Preferred:** let `fm-spawn` wrap via auto config — ensure `config/claude-cswap-auto` exists (any content), then spawn normally with `--harness claude`. Spawn prints `info: claude-cswap-auto selected slot=…`.

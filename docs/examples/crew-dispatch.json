@@ -1,74 +1,154 @@
 {
   "rules": [
     {
-      "when": "The task is design, architecture, product framing, or asking the captain clarifying questions: system shape, API boundaries, tradeoff analysis, Lavish planning judgment, or Explore-mode hard questions. Not bulk implementation.",
+      "when": "The task is SUBSTANTIAL design work: building or redesigning a real UI, product surface, or visual system; a major architecture or system-shape decision; or the final taste convergence on a UI actively being built. Substantial means the outcome is a design that people will live with, not a tweak. This rule does NOT cover routine framing, small artifact edits, or 'how do I change this Lavish/Paper document' work.",
       "use": [
-        { "harness": "claude", "model": "fable", "effort": "high" },
-        { "harness": "claude", "effort": "high" }
+        {
+          "harness": "claude",
+          "model": "fable",
+          "effort": "xhigh"
+        },
+        {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "xhigh"
+        }
       ],
-      "why": "Fable owns judgment, design, and architecture. Do not burn Cursor/Codex as the first pick for open design decisions."
+      "why": "Captain 2026-09-09: Fable is RESERVED for substantial design work only - real UI building and redesign - because the weekly Fable model window is the scarcest resource in the fleet. Opus is the fallback when Fable is tight or exhausted; never let a Fable-tight window silently downgrade a genuine design task below strong-reasoning class (AGENTS.md section 4)."
     },
     {
-      "when": "The task is frontend taste or layout cleanup: polish visual hierarchy, spacing, brand feel, or converge after exploratory UI variants. Not a bulk fan-out of many rough options.",
+      "when": "The task is ordinary judgment work that is NOT substantial UI/redesign building: architecture questions with a known shape, API boundaries, tradeoff analysis, product framing, clarifying questions to the captain, planning and Lavish/Paper plan iteration, critiquing an artifact, or a small edit to an existing document or board.",
       "use": [
-        { "harness": "claude", "model": "fable", "effort": "high" },
-        { "harness": "claude", "effort": "high" }
+        {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        }
       ],
-      "why": "Fable owns taste/layout convergence after faster models generate options."
+      "why": "Captain 2026-09-09: Opus is the standing Claude model for judgment, orchestration, and everything short of substantial design. Do not spend the Fable window here - explicitly not on Lavish/Paper document edits or routine framing."
+    },
+    {
+      "when": "The task is frontend taste or layout cleanup on an existing surface: polish visual hierarchy, spacing, or brand feel. Not a bulk fan-out of rough options, and not a substantial redesign (that is rule 1).",
+      "use": [
+        {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        },
+        {
+          "harness": "cursor"
+        }
+      ],
+      "why": "Captain 2026-09-09: incremental polish is Opus work, not Fable work. Fable only re-enters when the task becomes a real redesign."
     },
     {
       "when": "The task is exploratory UI or Paper fan-out: generate several rough variants or surfaces quickly so the captain can compare, not a final taste pass.",
       "use": [
-        { "harness": "cursor" },
-        { "harness": "codex", "effort": "medium" }
+        {
+          "harness": "cursor"
+        },
+        {
+          "harness": "codex",
+          "effort": "medium"
+        }
       ],
-      "why": "Speed-class fan-out. Cursor first (no effort flag on Cursor); Codex next. Save Fable for later convergence."
+      "why": "Speed-class fan-out. Cursor first (no effort flag on Cursor); Codex next. Convergence on the winner may escalate to rule 1 if it becomes substantial design."
     },
     {
       "when": "The task is a chore: docs, CI hygiene, Linear hygiene, renames, formatting, dependency bumps, or other low-ambiguity housekeeping.",
       "use": [
-        { "harness": "cursor" },
-        { "harness": "codex", "effort": "low" }
+        {
+          "harness": "cursor"
+        },
+        {
+          "harness": "codex",
+          "effort": "low"
+        }
       ],
       "why": "Fastest cheap path. Cursor first; Codex fallback."
     },
     {
       "when": "The task is a trivial mechanical edit: targeted typo, one-file fix, rote rename, or similarly narrow low-ambiguity coding.",
       "use": [
-        { "harness": "cursor" },
-        { "harness": "codex", "effort": "low" }
+        {
+          "harness": "cursor"
+        },
+        {
+          "harness": "codex",
+          "effort": "low"
+        }
       ],
       "why": "Speed class. Cursor first."
     },
     {
+      "when": "The task is agent-driven computer use: operating a web console or browser UI to configure a service, provision or rotate an access key, set up a vendor dashboard, or similar browser-heavy operations that do not require the captain's own identity or billing authority.",
+      "use": [
+        {
+          "harness": "codex",
+          "effort": "high"
+        }
+      ],
+      "why": "Captain 2026-09-08 (upgrading his 2026-09-07 note): GPT-6 (codex) is SUBSTANTIALLY better than Fable for computer use - codex is the only routine lane for it. When the codex lane is out of credits, PARK the task until the credits reset rather than falling back to another model (captain parked the live Plain pass on exactly this call); another harness only on a current explicit captain instruction. Owner-identity and billing steps still go to the captain per charter."
+    },
+    {
       "when": "The task is adversarial review, no-mistakes review, or a second-opinion pass on code another model authored.",
       "use": [
-        { "harness": "codex", "effort": "high" },
-        { "harness": "claude", "effort": "high" }
+        {
+          "harness": "codex",
+          "effort": "high"
+        },
+        {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        }
       ],
-      "why": "Prefer a different family than the author. Codex is the standing review default; Claude only if Codex is tight."
+      "why": "Prefer a different family than the author. Codex is the standing review default; Claude-as-Opus only if Codex is tight. Review is never Fable work."
     },
     {
       "when": "The task is a big or ambiguous multi-file feature or risky refactor where architecture is already decided and the work is primarily implementation with remaining technical ambiguity.",
       "use": [
-        { "harness": "codex", "effort": "high" },
-        { "harness": "cursor" },
-        { "harness": "claude", "effort": "high" }
+        {
+          "harness": "codex",
+          "effort": "high"
+        },
+        {
+          "harness": "cursor"
+        },
+        {
+          "harness": "claude",
+          "model": "opus",
+          "effort": "high"
+        }
       ],
-      "why": "Codex is the mid/frontier implementer (smarter than pure speed, faster than Fable). Cursor second. Claude last to conserve Fable/Claude quota."
+      "why": "Codex is the mid/frontier implementer (smarter than pure speed, faster than a Claude judgment model). Cursor second. Claude-as-Opus last to conserve the Claude account window."
     },
     {
       "when": "The task is an ordinary ship: feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity.",
       "use": [
-        { "harness": "cursor" },
-        { "harness": "codex", "effort": "medium" }
+        {
+          "harness": "cursor"
+        },
+        {
+          "harness": "codex",
+          "effort": "medium"
+        }
       ],
       "why": "Default implementation path. Cursor for speed; Codex when Cursor headroom is tight or the slice needs more frontier punch."
     }
   ],
   "default": [
-    { "harness": "cursor" },
-    { "harness": "codex", "effort": "medium" },
-    { "harness": "claude", "effort": "medium" }
+    {
+      "harness": "cursor"
+    },
+    {
+      "harness": "codex",
+      "effort": "medium"
+    },
+    {
+      "harness": "claude",
+      "model": "opus",
+      "effort": "medium"
+    }
   ]
 }
