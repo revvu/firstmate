@@ -30,7 +30,7 @@ Do **not** load for Explore-mode Lavish iteration.
 ## Hierarchy reminder
 
 - **Opus** — standing Claude model: questions, framing, planning, ordinary judgment, artifact/Lavish/Paper edits where the content is still the open question, Claude-lane implementation (pin explicitly).
-- **Fable** — substantial design only (real UI/product-surface build or redesign, major system-shape, final taste on a surface actively being built); Opus xhigh is the fallback.
+- **Fable** — substantial design and visual convergence (real UI/product-surface build or redesign, major system-shape, and all taste/layout convergence on an existing surface); Opus is the only fallback.
 - **Codex** — frontier implement + adversarial review.
 - **Cursor** — speed implement (chores, mechanical, ordinary ships, UI fan-out).
 
@@ -53,12 +53,12 @@ Do **not** load for Explore-mode Lavish iteration.
 
 | Slice type | Default |
 |---|---|
-| substantial design / major architecture / active-build taste | Claude Fable xhigh → Opus xhigh |
+| substantial design / major architecture | Claude Fable xhigh → Opus xhigh |
 | ordinary judgment / framing / questions / artifact edits needing judgment | Claude Opus high |
-| taste / layout polish (shipped surface) | Claude Opus high → Cursor |
-| fan-out / already-decided bulk artifact edit | Cursor medium → Codex |
-| chore / mechanical | Cursor low → Codex |
-| ordinary ship | Cursor medium → Codex |
+| taste / layout / visual convergence (existing surface) | Claude Fable high → Opus high |
+| fan-out / already-decided bulk artifact edit | Cursor → Codex medium |
+| chore / mechanical | Cursor → Codex low |
+| ordinary ship | Cursor → Codex medium |
 | ambiguous implement | Codex high → Cursor → Claude Opus high |
 | review | Codex high → Claude Opus high |
 
@@ -74,6 +74,6 @@ Until multi-account Claude dispatch lands, do not claim a specific cswap slot wa
 ## Anti-patterns
 
 - Spawning all implementation onto Fable (or onto Claude when Cursor/Codex fit).
-- Using Fable for bulk variant generation, small Lavish/Paper document edits, or routine framing.
+- Using Fable for bulk variant generation, small Lavish/Paper document edits, or routine framing (converging a surface on its final look is Fable work, though).
 - Mid-flight `cswap` of a live agent instead of assigning implement work to Cursor/Codex.
 - Starting Execute while major product forks are still open — finish Explore or schedule a design scout first.

@@ -18,16 +18,17 @@ Claude has an explicit **model** axis inside the Claude harness: pin the model o
 | Tier | Who | Job |
 |---|---|---|
 | Standing Claude | Claude **Opus** (pinned explicitly) | Orchestration, judgment, architecture with a known shape, framing, planning, judgment-bearing artifact/Lavish/Paper edits, review, Claude-lane implementation |
-| Substantial design | Claude **Fable** (then Opus xhigh) | Real UI or product-surface build/redesign; major architecture or system-shape decisions; final taste converge on a surface actively being built |
+| Substantial design + visual convergence | Claude **Fable** (then Opus) | Real UI or product-surface build/redesign; major architecture or system-shape decisions; all frontend taste, layout, and visual convergence on an existing surface |
 | Frontier implement | **Codex** | Smart implementation when the path is mostly decided but still needs a strong coder; adversarial review |
 | Speed implement | **Cursor** | Chores, mechanical edits, ordinary ships, UI/Paper fan-out (Cursor has **no effort flag** — omit `effort` in dispatch; optionally pin `--model` like `composer-2.5-fast`) |
 
 **Implementers are Cursor + Codex.** Claude is judgment and reserved design, not the default coder.
 
-**Fable is reserved.** Explicitly not Fable: small edits to an existing Lavish or Paper document, routine framing, ordinary clarifying questions, taste polish on a shipped surface, review, or implementation.
+**Fable is reserved.** Explicitly not Fable: small edits to an existing Lavish or Paper document, routine framing, ordinary clarifying questions, bulk fan-out of rough options to compare, review, or implementation.
+Taste and layout polish is Fable — the captain's 2026-09-09 correction put all visual convergence back on Fable, not just redesigns.
 
 `model:fable` is a named model sub-window bounded by the `claude,all_models` account window, so a provider-level percentage does not describe Fable's headroom and vice versa.
-Fable being tight is never a reason to downgrade a genuine substantial-design task below strong-reasoning class; Opus is its fallback (`AGENTS.md` section 4).
+Fable being tight is never a reason to downgrade a genuine substantial-design or visual-convergence task below strong-reasoning class; Opus is its only fallback (`AGENTS.md` section 4).
 
 ## Modes
 
@@ -39,12 +40,12 @@ Decisions still open: surface shopping, Paper fan-out, Lavish plan iteration.
 |---|---|
 | Hard questions / framing / a Lavish or Paper edit where the content is still the open question | Opus (high) |
 | An already-decided Lavish/Paper bulk edit or many rough variants to compare | Cursor CLI (or Cursor crewmate once dispatched) |
-| Substantial redesign / final taste on a surface being built | Fable (then Opus xhigh) |
+| Substantial redesign / any taste, layout, or visual convergence on a surface | Fable (then Opus) |
 
 The dividing line on the first two rows is whether the edit needs judgment.
 Deciding what the artifact should say, restructuring it, or choosing among variants is Opus; typing out a settled edit is Cursor, so Claude quota stays on judgment.
 Two carve-outs stay on Opus rather than being delegated: a tiny one-line fix cheaper to do inline than to hand off, and any edit the captain explicitly wants done in the session he is talking to.
-Fable is untouched by this boundary — substantial design only.
+Fable is untouched by this boundary — substantial design and visual convergence only.
 
 Do not spawn a big fleet until intent is lockable.
 
@@ -54,9 +55,9 @@ Plan locked → `/plan-to-fleet` → spawn.
 
 | Task class | Preferred order |
 |---|---|
-| Substantial design / major architecture / active-build taste | Fable xhigh → Opus xhigh |
+| Substantial design / major architecture | Fable xhigh → Opus xhigh |
 | Ordinary judgment / framing / artifact edits needing judgment (never a targeted typo, one-file fix, or rote rename) | Opus high |
-| Taste / layout polish (shipped surface) | Opus high → Cursor |
+| Taste / layout / visual convergence (existing surface) | Fable high → Opus high |
 | UI fan-out (rough options) / already-decided bulk artifact edit | Cursor → Codex |
 | Chore / mechanical — targeted typo, one-file fix, rote rename, even in a document | Cursor → Codex |
 | Ordinary ship | Cursor → Codex |
