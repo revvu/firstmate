@@ -108,11 +108,6 @@ set -u
 # responses that fm_backend_tmux_agent_state owns as death.
 [ "${FM_FAKE_TMUX_UNREADABLE:-0}" = 1 ] && { printf 'no current client\n' >&2; exit 1; }
 case "${1:-}" in
-  list-windows)
-    # A successful but empty inventory: it omits the crew's window, so absence
-    # is proved by the answer rather than by an addressed call failing. Only
-    # reached once display-message has already failed.
-    ;;
   display-message)
     [ "${FM_FAKE_TMUX_MISSING:-0}" = 1 ] && exit 1
     # #{pane_current_command} is the one format whose VALUE matters here: it is
@@ -2495,6 +2490,7 @@ test_run_step_keeps_authority_over_the_exit_record() {
   assert_contains "$out" "source: run-step" "the run-step stays the source"
   assert_contains "$out" "signal 9" "the dead driver is still visible in the same read"
   pass "an exit record annotates an active run-step instead of overriding it"
+}
 
 # Mint a descendant of <repo>'s HEAD in a separate clone, echoing its full sha.
 # The task copy never receives the new object, which is exactly the incident

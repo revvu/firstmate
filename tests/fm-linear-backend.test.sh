@@ -496,6 +496,11 @@ test_bearings_linear_projection() {
 EOF
   printf 'window=fm-local-task\nendpoint_task_id=local-task\nlinear=QB-9\n' > "$home/state/local-task.meta"
   printf 'linear=QB-4\n' > "$home/state/stale-task.meta"
+  # The fleet snapshot only folds a local secondmate's holds from its published
+  # structured ledger (state/home-summary.json), so the fixture publishes one
+  # the same way a live home does.
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$mate" \
+    "$ROOT/bin/fm-home-summary-refresh.sh" >/dev/null 2>&1 || true
   out=$(env FM_SNAPSHOT_SECONDMATE_QUEUED=1 FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME=1 \
     FM_HOME="$home" FM_FAKE_CURL_LOG="$home/curl.log" \
     PATH="$fb:$PATH" "$BEARINGS" --json) \

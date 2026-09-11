@@ -2121,6 +2121,32 @@ test_gitlab_merged_poll_retires() {
   pass "GitHub and GitLab exact merged results share one retirement path"
 }
 
+# A task spawned with --linear records linear= in meta. Arming the merge poll
+# must resolve CONFIG from FM_HOME itself; an inherited CONFIG= workaround must
+# not be required (live crash on 2026-09-07 when $CONFIG was referenced unset).
+test_linear_linked_check_resolves_config() {
+  local dir url rc
+  url=https://github.com/example/repo/pull/42
+  dir=$(make_case linear-pr-check-config)
+  write_task_meta "$dir"
+  printf 'linear\n' > "$dir/home/config/backlog-backend"
+  printf 'linear=GAL-8\n' >> "$dir/home/state/task-a.meta"
+  set +e
+  env -u CONFIG -u FM_CONFIG_OVERRIDE -u LINEAR_API_KEY \
+    FM_ROOT_OVERRIDE="$dir/root" FM_HOME="$dir/home" \
+    FM_TEST_GUARD_LOG="$dir/guard.log" FM_TEST_GH_LOG="$dir/gh.log" \
+    FM_TEST_GH_AXI_LOG="$dir/gh-axi.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
+    PATH="$dir/fakebin:$BASE_PATH" \
+    "$PR_CHECK" task-a "$url" > "$dir/stdout" 2> "$dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "linear-linked fm-pr-check failed without inherited CONFIG: $(cat "$dir/stderr")"
+  grep -q '^armed:' "$dir/stdout" || fail "linear-linked fm-pr-check did not arm the poll"
+  grep -q 'could not attach the PR to Linear issue GAL-8' "$dir/stderr" \
+    || fail "linear-linked fm-pr-check never reached the Linear attach path"
+  pass "fm-pr-check resolves CONFIG for a linear-linked task without an inherited CONFIG"
+}
+
 test_parser_matrix
 test_gitlab_merge_watch
 test_merged_poll_retires_once
@@ -2135,6 +2161,7 @@ test_external_merge_transition_retires_only_terminal_poll
 test_retirement_refuses_replacement_and_nonterminal_results
 test_retirement_queue_failure_and_receipt_tampering
 test_gitlab_merged_poll_retires
+test_linear_linked_check_resolves_config
 test_invalid_entrypoints_have_zero_side_effects
 test_valid_recording_and_merge_derivation
 test_rejected_metacharacter_bytes_are_inert

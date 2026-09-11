@@ -214,11 +214,13 @@ test_kimi_launch_then_send_is_verified() {
   assert_contains "$out" "spawned $id harness=kimi" "kimi spawn did not report success"
 
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
-    || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch"
-  assert_not_contains "$launch" "--effort" "kimi launch emitted a nonexistent effort flag"
-  assert_not_contains "$launch" "turn-ended" "kimi launch embedded a turn-end path"
-  assert_not_contains "$launch" "__TURNEND__" "kimi launch retained a turn-end placeholder"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the kimi launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
+    || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch_kind"
+  assert_not_contains "$launch_kind" "--effort" "kimi launch emitted a nonexistent effort flag"
+  assert_not_contains "$launch_kind" "turn-ended" "kimi launch embedded a turn-end path"
+  assert_not_contains "$launch_kind" "__TURNEND__" "kimi launch retained a turn-end placeholder"
 
   brief_real="$(cd "$HOME_DIR/data/$id" && pwd -P)/launch-brief.md"
   pointer=$(cat "$CASE_DIR/pointer.log")
@@ -473,8 +475,10 @@ test_kimi_falls_back_to_expanded_home_binary() {
   rc=$?
   expect_code 0 "$rc" "Kimi HOME fallback spawn should succeed"
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
-    || fail "Kimi fallback did not expand HOME into an absolute executable: $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the kimi fallback launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
+    || fail "Kimi fallback did not expand HOME into an absolute executable: $launch_kind"
   pass "fm-spawn: Kimi fallback expands the active HOME"
 }
 
