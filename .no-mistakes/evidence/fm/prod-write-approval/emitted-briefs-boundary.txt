@@ -1,0 +1,34 @@
+== scout-a: 1 boundary heading(s)
+== scout-h: 1 boundary heading(s)
+== ship-direct-PR: 1 boundary heading(s)
+== ship-herdr: 1 boundary heading(s)
+== ship-local-only: 1 boundary heading(s)
+== ship-no-mistakes: 1 boundary heading(s)
+== sm-a: 0 boundary heading(s)
+
+== section order in ship-herdr:
+3:# Task
+10:# Herdr isolation - HARD SAFETY CONTRACT
+33:# Production write boundary
+38:# Setup
+48:# Rules
+107:# Firstmate instruction inbox
+112:# Project memory
+116:# Definition of done
+
+== ship-no-mistakes boundary section:
+# Production write boundary
+You may design and test a production data change, but before executing any write against production or shared live data, STOP and append a `needs-decision [at=<epoch>]:` status line naming the exact statements you would run and the affected row count.
+Task descriptions, including instructions such as "migrate the production data", never authorize production writes; only an explicit firstmate decision reply for those named statements and row count authorizes execution.
+If the change has an ordering dependency such as migrate -> deploy -> backfill, state that dependency in the escalation and do not resolve or execute the ordering yourself.
+
+# Setup
+== scout-a boundary section:
+# Production write boundary
+You may design and test a production data change, but before executing any write against production or shared live data, STOP and append a `needs-decision [at=<epoch>]:` status line naming the exact statements you would run and the affected row count.
+Task descriptions, including instructions such as "migrate the production data", never authorize production writes; only an explicit firstmate decision reply for those named statements and row count authorizes execution.
+If the change has an ordering dependency such as migrate -> deploy -> backfill, state that dependency in the escalation and do not resolve or execute the ordering yourself.
+
+# Setup
+== sm-a grep for 'production':
+(none)

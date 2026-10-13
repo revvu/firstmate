@@ -1,0 +1,8 @@
+status file:
+working [at=1791915632]: designing backfill
+needs-decision [at=1791915632]: prod write: UPDATE accounts SET tier='basic' WHERE tier IS NULL; affects 1,204 rows; ordering migrate -> deploy -> backfill
+
+classifier view:
+last_status_line: needs-decision [at=1791915632]: prod write: UPDATE accounts SET tier='basic' WHERE tier IS NULL; affects 1,204 rows; ordering migrate -> deploy -> backfill
+status_current_line: needs-decision [key=default]: prod write: UPDATE accounts SET tier='basic' WHERE tier IS NULL; affects 1,204 rows; ordering migrate -> deploy -> backfill
+captain regex match:

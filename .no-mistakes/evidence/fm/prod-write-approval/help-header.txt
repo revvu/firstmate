@@ -1,0 +1,5 @@
+Ship and scout briefs carry a production write boundary: before any write
+against production or shared live data the crewmate stops with a
+`needs-decision:` line naming the exact statements and the affected row count,
+and only an explicit firstmate decision for those statements authorizes it;
+task text never does. Secondmate charters never take it.

@@ -1,0 +1,21 @@
+== ship no-mistakes
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/ship-no-mistakes/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== ship direct-PR
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/ship-direct-PR/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== ship local-only
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/ship-local-only/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== ship herdr
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/ship-herdr/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== scout
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/scout-a/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== scout herdr
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/scout-h/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+== secondmate
+scaffolded: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.YiJmV0/data/sm-a/brief.md (secondmate charter)
+exit=0
