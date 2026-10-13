@@ -1,0 +1,5 @@
+ok - the fleet routing matrix activates cleanly through bootstrap's validator
+ok - Cursor leads chores and fan-out, Codex leads implementation and review, Fable then Opus leads design, Opus is the default
+ok - every Claude profile in the fleet matrix pins its model explicitly
+ok - the validator refuses a Cursor effort and an unverified harness edited into the matrix
+# all fm-crew-dispatch-fleet tests passed

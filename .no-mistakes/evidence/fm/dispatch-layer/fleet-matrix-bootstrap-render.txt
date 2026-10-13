@@ -1,0 +1,8 @@
+BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json
+BOOTSTRAP_INFO: crew dispatch rule: The task is design, architecture, or a clarifying question: system shape, API boundaries, tradeoff analysis, product framing, Lavish planning judgment, or questions the captain must answer before work can be locked. Not bulk implementation and not a mechanical edit. -> quota-balanced[claude/claude-fable-5-1/high, claude/opus/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is fan-out work: generate several rough UI, Paper, or Lavish variants for the captain to compare, or apply an already-decided bulk edit across many artifacts or files. Fast and low-ambiguity; not a final taste pass and not an edit whose content is still an open question. -> quota-balanced[cursor, codex/default/medium]
+BOOTSTRAP_INFO: crew dispatch rule: The task is a chore: docs, CI hygiene, renames, formatting, dependency bumps, a targeted typo or one-file fix, or other low-ambiguity housekeeping. -> quota-balanced[cursor, codex/default/low]
+BOOTSTRAP_INFO: crew dispatch rule: The task is frontier implementation: a big or ambiguous multi-file feature, a risky refactor, or any implementation where the architecture is decided but real technical ambiguity remains and a strong coder is needed. -> quota-balanced[codex/default/high, claude/opus/high]
+BOOTSTRAP_INFO: crew dispatch rule: The task is an ordinary ship: a feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity. -> cursor
+BOOTSTRAP_INFO: crew dispatch rule: The task is code review: adversarial review, a no-mistakes review pass, or a second opinion on code another model authored. -> quota-balanced[codex/default/high, claude/opus/high]
+BOOTSTRAP_INFO: crew dispatch default: claude/opus

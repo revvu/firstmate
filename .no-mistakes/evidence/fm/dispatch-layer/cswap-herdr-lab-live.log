@@ -1,0 +1,81 @@
+lab home: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9  herdr session: fm-lab-cswaplive-19653-9610
+=== config/claude-account: cswap
+=== SCENARIO happy: spawn cswap-live (model opus)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9
+warning: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/data/cswap-live/launch-brief.md records no ship branch; defaulting to legacy branch fm/cswap-live
+warning: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/data/cswap-live/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+warning: herdr presentation parent is absent or ambiguous; using the ordinary flat layout without projection
+spawned cswap-live harness=claude kind=ship mode=no-mistakes yolo=off window=fm-lab-cswaplive-19653-9610:w1:p2 worktree=/private/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T/fm-lab.ddrfE9/user-home/.treehouse/proj-d43961/1/proj account=cswap:2
+spawn exit 0
+--- cswap calls:
+cswap list --json
+cswap run 2 --require-session -- --version
+--- claude sign-in checks:
+auth-status CLAUDE_CONFIG_DIR=/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/user-home/.claude-swap-backup/sessions/2-spare_two_example.invalid
+--- worker process env inside the Herdr pane:
+(worker never started)
+--- real worker process in the pane (ps eww, filtered):
+pid 23887 argv: claude --dangerously-skip-permissions --add-dir /private/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T/fm-lab.ddrfE9/state/operational-inbox --add-dir /privat
+CLAUDE_CONFIG_DIR=/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/user-home/.claude-swap-backup/sessions/2-spare_two_example.invalid
+--- pane screen:
+                                             ░▓▓███▓▓░
+ *                                 ░░░░
+                                 ░░░░░░░░
+                               ░░░░░░░░░░░░░░░░
+       █████████                                        *
+      ██▄█████▄██                        *
+       █████████      *
+.......█ █   █ █..........................................
+ Let's get started.
+ Choose the text style that looks best with your terminal
+ To change this later, run /theme
+   1. Auto (match terminal)
+ ❯ 2. Dark mode ✔
+   3. Light mode
+   4. Dark mode (colorblind-friendly)
+   5. Light mode (colorblind-friendly)
+   6. Dark mode (ANSI colors only)
+   7. Light mode (ANSI colors only)
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1  function greet() {
+  2 -  console.log("Hello, World!");
+  2 +  console.log("Hello, Claude!");
+  3  }
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  Syntax theme: Monokai Extended (ctrl+t to disable)
+--- state/cswap-live.meta:
+window=fm-lab-cswaplive-19653-9610:w1:p2
+endpoint_task_id=cswap-live
+worktree=/private/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T/fm-lab.ddrfE9/user-home/.treehouse/proj-d43961/1/proj
+project=/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T/fm-lab.ddrfE9/proj
+harness=claude
+kind=ship
+mode=no-mistakes
+yolo=off
+branch=fm/cswap-live
+tasktmp=/tmp/fm-cswap-live
+model=opus
+effort=default
+account=cswap:2
+busy_gen=g1791922998.22636.7905
+spawn_gen=s1791922998.19999.30145
+backend=herdr
+herdr_session=fm-lab-cswaplive-19653-9610
+herdr_workspace_id=w1
+herdr_tab_id=w1:t2
+herdr_pane_id=w1:p2
+--- Herdr lab panes:
+{"pane_id":"w1:p2","label":null,"cwd":"/private/var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T/fm-lab.ddrfE9/user-home/.treehouse/proj-d43961/1/proj","agent":"claude"}
+=== SCENARIO refuse: real cswap 0.26.0 in the disposable HOME (no managed accounts)
+cswap on PATH: /Users/reevuadakroy/.local/bin/cswap (cswap 0.26.0)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9
+error: config/claude-account selects cswap, but no claude-swap account could be picked (no usable claude-swap account (enabled, usageStatus ok); run cswap list to refresh usage); repair cswap or change the pin: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/config/claude-account
+spawn exit 1
+state/cswap-refuse.meta exists: no; sign-in checks run: 0
+real HOME cswap backup untouched in disposable home: sessions 
+=== SCENARIO no cswap on PATH
+cswap on PATH: none
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9
+error: config/claude-account selects cswap, but no claude-swap account could be picked (cswap is not on PATH); repair cswap or change the pin: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fm-lab.ddrfE9/config/claude-account
+spawn exit 1
+lab herdr session torn down

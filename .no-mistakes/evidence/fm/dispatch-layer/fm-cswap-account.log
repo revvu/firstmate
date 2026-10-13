@@ -1,0 +1,6 @@
+ok - a cswap pin launches on the account with the most remaining quota in its own session profile
+ok - a cswap pin whose best account is the active login runs on the default login without touching cswap
+ok - a Fable model picks by the Fable window, other models by the account windows
+ok - a cswap pin refuses before launch when cswap cannot list accounts or lists no usable one
+ok - a cswap pin refuses before launch when the session profile cannot be prepared
+# all fm-cswap-account tests passed
