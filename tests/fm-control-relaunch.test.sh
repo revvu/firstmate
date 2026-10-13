@@ -1427,9 +1427,29 @@ test_relaunch_rearms_exit_capture_without_the_stale_off_line() {
   assert_no_grep 'exit_capture=' "$dir/home/state/rl62.meta" \
     "an armed relaunch must not carry the previous incarnation's exit_capture=off"
   assert_grep 'armed_at=' "$dir/home/state/rl62.exit" "the relaunch did not arm a fresh exit record"
+  assert_grep 'fm-exit-record.sh' "$dir/fake/literal" "an armed relaunch must carry the recorder"
   assert_no_grep 'exit_status=' "$dir/home/state/rl62.exit" \
     "the previous incarnation's recorded exit survived the relaunch"
   pass "fm-control relaunch: a relaunch re-arms exit capture and drops the stale off line"
+}
+
+test_arm_failure_runs_unwrapped_and_says_so() {
+  local dir out rc real_mv record
+  dir=$(new_case exit-arm-fail rl63)
+  add_ship_task "$dir" rl63 claude
+  "$ROOT/bin/fm-exit-record.sh" record "$dir/home/state" rl63 1
+  record="$(cd "$dir/home/state" && pwd -P)/rl63.exit"
+  real_mv=$(command -v mv)
+  make_mv_failure_stub "$dir"
+  out=$(FM_REAL_MV="$real_mv" FM_FAKE_META_PUBLISH_MV_FAIL="$record" \
+    run_control "$dir" rl63 relaunch --note "continue"); rc=$?
+  expect_code 0 "$rc" "a relaunch whose exit capture cannot be armed should still succeed"$'\n'"$out"
+  assert_contains "$out" "agent exit capture could not be armed" "the arm failure was not reported"
+  [ "$(grep -c '^exit_capture=off$' "$dir/home/state/rl63.meta")" = 1 ] \
+    || fail "an unarmed relaunch must record exit_capture=off exactly once"
+  assert_absent "$dir/home/state/rl63.exit" "the previous incarnation's exit record survived an unarmed relaunch"
+  assert_no_grep 'fm-exit-record.sh' "$dir/fake/literal" "an unarmed launch must not carry the recorder"
+  pass "fm-control relaunch: an unarmed relaunch runs without the recorder and says so in its record"
 }
 
 test_prepublication_failure_keeps_concurrent_durable_metadata() {
@@ -2605,6 +2625,7 @@ test_checkpoint_refuses_uninspectable_head_and_status
 test_launch_failure_keeps_the_prior_record_and_reports_it
 test_launch_failure_keeps_the_prior_exit_record
 test_relaunch_rearms_exit_capture_without_the_stale_off_line
+test_arm_failure_runs_unwrapped_and_says_so
 test_prepublication_failure_keeps_concurrent_durable_metadata
 test_post_publication_launch_failure_keeps_the_new_record
 test_stop_transport_failure_reconciles_a_dead_agent

@@ -5193,16 +5193,29 @@ if [ "$SPAWN_META_LOCK_HELD" != 1 ]; then
   SPAWN_META_LOCK_HELD=1
 fi
 # Agent exit capture (bin/fm-exit-record.sh owns the record and its limits).
-# Decide it now, so the task record below can say when a launch runs without
-# it; the record is armed once that task record is published, and the recorder
-# is appended to the launch line once that line is final. A raw launch command
-# is unverified shell text, so its status cannot be safely attributed to the
-# agent: those spawns run unwrapped and record nothing, which reads as unknown
-# rather than as a clean exit.
-EXIT_CAPTURE=on
+# Arm the record now, past every refusal point and just before the task record
+# below is published, so a refused spawn leaves the previous incarnation's
+# record intact and the task record can say when a launch runs without it; the
+# recorder itself is appended to the launch line once that line is final. A raw
+# launch command is unverified shell text, so its status cannot be safely
+# attributed to the agent: those spawns run unwrapped and record nothing, which
+# reads as unknown rather than as a clean exit.
+EXIT_CAPTURE=off
 if [ "$RAW_LAUNCH" -eq 1 ]; then
   echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
-  EXIT_CAPTURE=off
+elif "$SCRIPT_DIR/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
+  EXIT_CAPTURE=on
+else
+  echo "warning: agent exit capture could not be armed for $ID" >&2
+fi
+# Arming atomically replaces the previous incarnation's record; an unarmed
+# spawn retires it with a direct unlink, not a call out to the helper, so
+# retirement never becomes a hard prerequisite for spawning. A record that
+# EXISTS and will not go would report the new incarnation under the previous
+# one's recorded signal, so that still refuses the spawn.
+if [ "$EXIT_CAPTURE" = off ] && ! rm -f -- "$STATE/$ID.exit"; then
+  echo "error: prior agent exit record could not be retired for spawn $ID" >&2
+  exit 1
 fi
 if [ "$RELAUNCH" -eq 1 ]; then
   SPAWN_META_TMP="$STATE/.$ID.meta.relaunch.${BASHPID:-$$}"
@@ -5348,19 +5361,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_REPLACEMENT_PENDING=0
   SPAWN_META_PUBLISH_STARTED=0
   SPAWN_META_TMP=
-fi
-# Replace the previous incarnation's agent exit record only now that the new
-# launch is published, so a refused spawn leaves that evidence intact. Arming
-# atomically replaces it; otherwise a direct unlink retires it, not a call out
-# to the helper, so retirement never becomes a hard prerequisite for spawning.
-# A record that EXISTS and will not go would report the new incarnation under
-# the previous one's recorded signal, so that still refuses the spawn.
-if [ "$EXIT_CAPTURE" = off ] || ! "$SCRIPT_DIR/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
-  [ "$EXIT_CAPTURE" = off ] || echo "warning: agent exit capture could not be armed for $ID" >&2
-  if ! rm -f -- "$STATE/$ID.exit"; then
-    echo "error: prior agent exit record could not be retired for spawn $ID" >&2
-    exit 1
-  fi
 fi
 # A dispatch or relaunch keeps the per-task meta lock through launch delivery.
 # The backlog mutation is deliberately the final fallible commit below, so
