@@ -28,11 +28,10 @@
 # Just before a new agent incarnation's task record is written, past every
 # refusal point, fm-spawn arms over or removes any existing record so evidence
 # keyed by the task id cannot be attributed to its successor; a spawn refused
-# before then leaves it intact. It removes with a direct unlink rather than by calling this script, deliberately: the
-# `arm` path has always tolerated this helper being absent, and retirement must
-# not be the one thing that turns instrumentation into a hard prerequisite for
-# spawning at all. `retire` below performs the same removal for any caller that
-# does have this script, and refuses only when a record exists and will not go.
+# before then leaves it intact. It removes with a direct unlink rather than by
+# calling this script, deliberately: the `arm` path has always tolerated this
+# helper being absent, and retirement must not be the one thing that turns
+# instrumentation into a hard prerequisite for spawning at all.
 #
 # Fields:
 #   v=1                     record format version
@@ -72,7 +71,6 @@
 # Usage:
 #   fm-exit-record.sh arm <state-dir> <id>
 #   fm-exit-record.sh record <state-dir> <id> <exit-status>
-#   fm-exit-record.sh retire <state-dir> <id>
 #   fm-exit-record.sh show <state-dir> <id>
 #   fm-exit-record.sh -h | --help
 #
@@ -263,13 +261,6 @@ cmd_record() {  # <state-dir> <id> <exit-status>
   } | atomic_write "$path" || die "could not write $path"
 }
 
-cmd_retire() {  # <state-dir> <id>
-  local state=$1 id=$2 path
-  [ -d "$state" ] || die "state directory does not exist: $state"
-  path=$(record_path "$state" "$id")
-  rm -f -- "$path" || die "could not remove $path"
-}
-
 # --- read -------------------------------------------------------------------
 
 field() {  # <file> <key>
@@ -397,10 +388,6 @@ case "${1:-}" in
   record)
     [ "$#" -eq 4 ] || die "usage: fm-exit-record.sh record <state-dir> <id> <exit-status>"
     cmd_record "$2" "$3" "$4"
-    ;;
-  retire)
-    [ "$#" -eq 3 ] || die "usage: fm-exit-record.sh retire <state-dir> <id>"
-    cmd_retire "$2" "$3"
     ;;
   show)
     [ "$#" -eq 3 ] || die "usage: fm-exit-record.sh show <state-dir> <id>"
