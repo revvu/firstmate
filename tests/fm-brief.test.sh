@@ -221,6 +221,60 @@ test_ship_modes_generate_clean_briefs() {
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
 }
 
+# Production writes always require a task-specific firstmate decision, regardless
+# of delivery mode or whether the Herdr isolation contract applies. Scouts carry
+# the same boundary because their worktree-only file rule does not prohibit
+# writes through a live service or data API. Secondmate charters never take it.
+test_production_write_boundary_covers_ship_and_scout_variants() {
+  local home id mode herdr brief
+  home="$TMP_ROOT/production-write-boundary-home"
+  mkdir -p "$home/data"
+
+  for mode in no-mistakes direct-PR local-only; do
+    for herdr in plain herdr; do
+      id="brief-production-write-$mode-$herdr"
+      if [ "$herdr" = herdr ]; then
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "$mode" --herdr-lab >/dev/null 2>&1
+      else
+        FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --mode "$mode" >/dev/null 2>&1
+      fi
+      brief="$home/data/$id/brief.md"
+      assert_grep "# Production write boundary" "$brief" \
+        "$mode/$herdr ship brief omitted the production-write boundary"
+      assert_grep "before executing any write against production or shared live data, STOP" "$brief" \
+        "$mode/$herdr ship brief did not stop before live writes"
+      assert_grep "naming the exact statements you would run and the affected row count" "$brief" \
+        "$mode/$herdr ship brief omitted the required escalation evidence"
+      assert_grep "Task descriptions, including instructions such as \"migrate the production data\", never authorize production writes" "$brief" \
+        "$mode/$herdr ship brief treated task text as production-write authority"
+      assert_grep "only an explicit firstmate decision reply" "$brief" \
+        "$mode/$herdr ship brief omitted the only production-write authority"
+      assert_grep "migrate -> deploy -> backfill" "$brief" \
+        "$mode/$herdr ship brief omitted deploy-order escalation"
+    done
+  done
+
+  for herdr in plain herdr; do
+    id="brief-production-write-scout-$herdr"
+    if [ "$herdr" = herdr ]; then
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout --herdr-lab >/dev/null 2>&1
+    else
+      FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+    fi
+    brief="$home/data/$id/brief.md"
+    assert_grep "# Production write boundary" "$brief" \
+      "$herdr scout brief omitted the production-write boundary"
+  done
+
+  id="brief-production-write-secondmate"
+  FM_SECONDMATE_CHARTER="Own the thing." FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" --secondmate --no-projects >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "secondmate charter was not scaffolded"
+  assert_no_grep "# Production write boundary" "$brief" \
+    "secondmate charter took the crewmate production-write boundary"
+  pass "fm-brief.sh: every ship and scout variant carries the production-write boundary; charters do not"
+}
+
 # --forge forgejo is the Forgejo value of the project's registered forge binding
 # (bin/fm-project-mode.sh --forge), passed at intake exactly like --mode. It
 # names tea instead of gh-axi in the ship brief's forge-CLI rule and in the
@@ -1546,6 +1600,7 @@ test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
+test_production_write_boundary_covers_ship_and_scout_variants
 test_forge_selection_renders_correct_cli
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
