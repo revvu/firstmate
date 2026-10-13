@@ -5659,9 +5659,44 @@ test_armed_only_record_stays_unknown() {
   FM_FAKE_TMUX_MISSING=1
   local out; out=$(run_crew_state "$d" feat-exit-e)
   assert_contains "$out" "state: unknown" "an armed-but-silent record proves nothing about the outcome"
-  assert_contains "$out" "agent exit not recorded" "the reader says the exit was never recorded"
+  assert_not_contains "$out" "exit capture armed" "an armed-only record adds no detail to the line"
   assert_not_contains "$out" "state: failed" "an absent exit is not a failure either"
-  pass "an armed-only record stays unknown"
+  pass "an armed-only record stays unknown and silent"
+}
+
+# A confirmed-dead agent whose harness quit nonzero without a signal is still a
+# current abnormal exit: failed, the terminal outcome the captain must see.
+test_dead_window_nonzero_exit_reports_failed() {
+  reset_fakes
+  local d; d=$(new_case exit-dead-nonzero)
+  make_repo_on_branch "$d/wt" fm/feat-exit-i
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-i.meta" "window=fm:fm-feat-exit-i" "worktree=$d/wt" "kind=ship"
+  record_exit "$d/state" feat-exit-i 1
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-i)
+  assert_contains "$out" "state: failed" "a confirmed-dead nonzero exit is a failed state"
+  assert_contains "$out" "source: exit-record" "the verdict names the exit record as its source"
+  assert_contains "$out" "agent exited with status 1" "the verdict names the exit status"
+  pass "a gone window with a recorded nonzero exit reads failed from the exit record"
+}
+
+# A live run-backed crew with an armed record keeps upstream's line exactly:
+# the armed record is not evidence and adds nothing to the heartbeat.
+test_armed_record_adds_no_detail_to_a_live_run() {
+  reset_fakes
+  local d; d=$(new_case exit-armed-run)
+  make_repo_on_branch "$d/wt" fm/feat-exit-j
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-j.meta" "window=fm:fm-feat-exit-j" "worktree=$d/wt" "kind=ship"
+  FM_FAKE_AXI_STATUS="$(run_running fm/feat-exit-j)"
+  FM_FAKE_TMUX_MISSING=1
+  local before; before=$(run_crew_state "$d" feat-exit-j)
+  arm_exit_record "$d/state" feat-exit-j
+  local out; out=$(run_crew_state "$d" feat-exit-j)
+  assert_contains "$out" "source: run-step" "the run-step stays the source"
+  [ "$out" = "$before" ] || fail "an armed record changed a live run's line"$'\n'"before: $before"$'\n'"after:  $out"
+  pass "an armed record leaves a live run's line unchanged"
 }
 
 # A zero exit is a fact about the process, not the work: never promoted to done.
@@ -5910,6 +5945,8 @@ test_abnormal_exit_outranks_stale_status_log_on_herdr
 test_live_busy_agent_outranks_a_stale_exit_record
 test_unverified_liveness_preserves_exit_without_false_failure
 test_armed_only_record_stays_unknown
+test_dead_window_nonzero_exit_reports_failed
+test_armed_record_adds_no_detail_to_a_live_run
 test_clean_exit_record_is_not_read_as_done
 test_run_step_keeps_authority_over_the_exit_record
 test_corrupt_exit_record_stays_unknown

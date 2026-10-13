@@ -369,7 +369,7 @@ exit_record_relation() {
 
 detail_with_exit() {  # [detail]
   local detail=${1:-}
-  if [ -n "$EXIT_DETAIL" ]; then
+  if [ "$EXIT_DISPOSITION" != armed ] && [ -n "$EXIT_DETAIL" ]; then
     if [ -n "$detail" ]; then detail="$detail${SEP}$EXIT_DETAIL"; else detail=$EXIT_DETAIL; fi
   fi
   printf '%s' "$detail"

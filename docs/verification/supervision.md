@@ -259,7 +259,8 @@ tests/fm-crew-state.test.sh
 
 [`bin/fm-exit-record.sh`](../../bin/fm-exit-record.sh) preserves the one fact a dead worker cannot report itself.
 `fm-spawn` arms `state/<id>.exit` before every verified launch and appends a recorder to the launch line, so the pane shell records the harness's exit status the moment the process ends, whether it exited cleanly, failed, or died to a signal.
-`fm-crew-state` ranks the record below a matching run and below any live or busy evidence newer than it, and only promotes an abnormal exit to `failed` when the backend's agent-state classifier confirms the agent is dead or missing.
+`fm-crew-state` ranks the record below a matching run and below any live or busy evidence newer than it, and only promotes an abnormal exit to `failed` when the backend's agent-state classifier confirms the agent is dead or missing, or the task records no backend target.
+`bin/fm-inactive-reconcile.sh` delivers that `failed` verdict like any other terminal outcome, so a confirmed-dead worker's nonzero exit, including a harness's own nonzero quit, reaches the captain or the parent home as `state=failed`.
 
 The mechanism was verified on 2026-08-11 against a real tmux worker: `kill -9` of the harness left `exit_status=137` in the record, and `fm-crew-state` reported `failed · exit-record` with `signal 9` once the window was gone, while a resume typed into the same pane kept the live agent authoritative with the record carried as detail.
 Its coverage against today's recovery classifier is deterministic.

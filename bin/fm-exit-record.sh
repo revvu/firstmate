@@ -25,9 +25,10 @@
 # An ABSENT record, an armed-only record, and an unreadable record all read as
 # UNKNOWN. None of them ever reads as a clean exit: inferring success from
 # absent evidence is the exact failure this record exists to remove.
-# Before starting any new agent incarnation, fm-spawn removes any existing record
-# so evidence keyed by the task id cannot be attributed to its successor. It does
-# that with a direct unlink rather than by calling this script, deliberately: the
+# Once a new agent incarnation's task record is published, fm-spawn arms over or
+# removes any existing record so evidence keyed by the task id cannot be
+# attributed to its successor; a spawn refused before then leaves it intact. It
+# removes with a direct unlink rather than by calling this script, deliberately: the
 # `arm` path has always tolerated this helper being absent, and retirement must
 # not be the one thing that turns instrumentation into a hard prerequisite for
 # spawning at all. `retire` below performs the same removal for any caller that
@@ -64,7 +65,9 @@
 # never wakes firstmate. It is instrumentation - the watcher's existing stale
 # detection surfaces the stopped worker exactly as it does today, and
 # bin/fm-crew-state.sh then reports THIS record instead of "state: unknown".
-# Emitting a wake would make a harness's own nonzero quit look like a failure.
+# That report is the one place an abnormal exit becomes a verdict: a nonzero
+# exit whose agent is confirmed dead reads as "state: failed", which
+# bin/fm-inactive-reconcile.sh delivers as a terminal outcome like any other.
 #
 # Usage:
 #   fm-exit-record.sh arm <state-dir> <id>
