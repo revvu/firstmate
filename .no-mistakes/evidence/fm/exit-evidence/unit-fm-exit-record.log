@@ -1,0 +1,9 @@
+ok - an absent record reads none, never a clean exit
+ok - an armed-but-never-completed record reads as exit-not-recorded
+ok - an exit status of 0 is recorded as a clean exit with no signal
+ok - a signalled exit records the signal, its name, and the derivation it came from
+ok - a nonzero non-signal exit is abnormal and claims no signal
+ok - completing the record preserves the spawn-time snapshot it is compared against
+ok - an exit is recorded even when the armed half is absent
+ok - corrupt records read unreadable and never as a clean exit
+ok - usage errors exit 2 and --help exits 0
