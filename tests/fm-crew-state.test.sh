@@ -5551,6 +5551,171 @@ test_captured_completed_history() {
   pass 'captured completed status yields to synthetic subsequent development'
 }
 
+
+# --- recorded agent exit (bin/fm-exit-record.sh) ----------------------------
+# The record is the one source that survives the agent's own death. These cases
+# drive the real recorder so the reader is judged on records it will meet.
+
+arm_exit_record() {  # <state-dir> <id>
+  "$ROOT/bin/fm-exit-record.sh" arm "$1" "$2" >/dev/null
+}
+
+record_exit() {  # <state-dir> <id> <status>
+  "$ROOT/bin/fm-exit-record.sh" arm "$1" "$2" >/dev/null
+  "$ROOT/bin/fm-exit-record.sh" record "$1" "$2" "$3" >/dev/null
+}
+
+# A tmux window that is authoritatively gone plus a recorded signal death: the
+# verdict is failed from the exit record, with the signal, instead of the
+# evidence-free "backend target gone".
+test_dead_window_reports_recorded_abnormal_exit() {
+  reset_fakes
+  local d; d=$(new_case exit-dead-window)
+  make_repo_on_branch "$d/wt" fm/feat-exit-a
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-a.meta" "window=fm:fm-feat-exit-a" "worktree=$d/wt" "kind=ship"
+  printf 'working: halfway through the refactor\n' > "$d/state/feat-exit-a.status"
+  record_exit "$d/state" feat-exit-a 137
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-a)
+  assert_contains "$out" "state: failed" "a recorded abnormal exit is a failed state"
+  assert_contains "$out" "source: exit-record" "the verdict names the exit record as its source"
+  assert_contains "$out" "signal 9" "the verdict names the signal"
+  assert_not_contains "$out" "source: none" "a dead endpoint no longer reports an unexplained unknown"
+  assert_not_contains "$out" "source: status-log" "a line the crew wrote while alive cannot be current"
+  pass "a gone window with a recorded signal death reads failed from the exit record"
+}
+
+# herdr's registration lingers over a pane whose agent is gone (agent_not_found):
+# positive death evidence, so the recorded exit is current and outranks the log.
+test_abnormal_exit_outranks_stale_status_log_on_herdr() {
+  command -v jq >/dev/null 2>&1 || { pass "herdr exit-record case skipped without jq"; return; }
+  reset_fakes
+  local d; d=$(new_case exit-herdr-dead)
+  make_repo_on_branch "$d/wt" fm/feat-exit-b
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-b.meta" "window=default:w1:p2" "worktree=$d/wt" "kind=ship" \
+    "backend=herdr" "harness=claude"
+  printf 'working: running the suite\n' > "$d/state/feat-exit-b.status"
+  record_exit "$d/state" feat-exit-b 143
+  FM_FAKE_HERDR_MISSING=0
+  FM_FAKE_HERDR_READ_FAIL=1
+  FM_FAKE_HERDR_HUSK=1
+  local out; out=$(run_crew_state "$d" feat-exit-b)
+  assert_contains "$out" "state: failed" "the recorded exit, not the log, is current"
+  assert_contains "$out" "source: exit-record" "the exit record is the source"
+  assert_contains "$out" "signal 15" "the verdict names the signal"
+  pass "a dead herdr agent with a recorded signal death reads failed from the exit record"
+}
+
+# A live, busy agent outranks a historical record (a resume typed into the same
+# pane): the record rides along as detail and never becomes the verdict.
+test_live_busy_agent_outranks_a_stale_exit_record() {
+  command -v jq >/dev/null 2>&1 || { pass "herdr live exit-record case skipped without jq"; return; }
+  reset_fakes
+  local d; d=$(new_case exit-herdr-live)
+  make_repo_on_branch "$d/wt" fm/feat-exit-c
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-c.meta" "window=default:w1:p2" "worktree=$d/wt" "kind=ship" \
+    "backend=herdr" "harness=claude"
+  record_exit "$d/state" feat-exit-c 137
+  FM_FAKE_HERDR_BUSY=1
+  FM_FAKE_HERDR_AGENT_STATUS=working
+  local out; out=$(run_crew_state "$d" feat-exit-c)
+  assert_contains "$out" "state: working" "positive busy evidence outranks a historical exit"
+  assert_contains "$out" "source: pane" "the live busy source stays authoritative"
+  assert_not_contains "$out" "source: exit-record" "a live agent must outrank a historical exit record"
+  assert_contains "$out" "signal 9" "the historical record still rides along as detail"
+  pass "a live busy agent outranks a historical exit record, which stays visible as detail"
+}
+
+# No classifier can confirm liveness (a backend without one, endpoint gone):
+# the exit evidence is preserved as unknown, never promoted to a failure.
+test_unverified_liveness_preserves_exit_without_false_failure() {
+  reset_fakes
+  local d; d=$(new_case exit-unverified)
+  make_repo_on_branch "$d/wt" fm/feat-exit-d
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-d.meta" "window=orca:wt-9" "worktree=$d/wt" "kind=ship" \
+    "backend=orca" "orca_worktree_id=wt-9" "terminal=none" "harness=claude"
+  record_exit "$d/state" feat-exit-d 137
+  local out; out=$(run_crew_state "$d" feat-exit-d)
+  assert_contains "$out" "state: unknown" "ambiguous agent liveness must not become a false failure"
+  assert_contains "$out" "source: exit-record" "the ambiguous verdict must preserve the recorded exit evidence"
+  assert_contains "$out" "signal 9" "the ambiguous verdict must retain the recorded signal"
+  assert_contains "$out" "liveness unverified" "the verdict says why it stays unknown"
+  pass "unverifiable liveness keeps a recorded exit as unknown, never failed"
+}
+
+# Armed but never completed: the agent may still be running, or the pane shell
+# died with it. That proves nothing about the outcome either way.
+test_armed_only_record_stays_unknown() {
+  reset_fakes
+  local d; d=$(new_case exit-armed)
+  make_repo_on_branch "$d/wt" fm/feat-exit-e
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-e.meta" "window=fm:fm-feat-exit-e" "worktree=$d/wt" "kind=ship"
+  arm_exit_record "$d/state" feat-exit-e
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-e)
+  assert_contains "$out" "state: unknown" "an armed-but-silent record proves nothing about the outcome"
+  assert_contains "$out" "agent exit not recorded" "the reader says the exit was never recorded"
+  assert_not_contains "$out" "state: failed" "an absent exit is not a failure either"
+  pass "an armed-only record stays unknown"
+}
+
+# A zero exit is a fact about the process, not the work: never promoted to done.
+test_clean_exit_record_is_not_read_as_done() {
+  reset_fakes
+  local d; d=$(new_case exit-clean)
+  make_repo_on_branch "$d/wt" fm/feat-exit-f
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-f.meta" "window=fm:fm-feat-exit-f" "worktree=$d/wt" "kind=ship"
+  record_exit "$d/state" feat-exit-f 0
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-f)
+  assert_contains "$out" "state: unknown" "a clean process exit is not evidence the WORK finished"
+  assert_contains "$out" "agent exited cleanly" "the clean exit is still reported as detail"
+  assert_not_contains "$out" "state: done" "a clean exit must never be promoted to done"
+  assert_not_contains "$out" "state: failed" "a clean exit is not a failure"
+  pass "a clean exit record is reported but never read as done"
+}
+
+# The run-step owns the WORK's state even when its driver process died: the
+# exit rides along as detail so both facts are visible in one read.
+test_run_step_keeps_authority_over_the_exit_record() {
+  reset_fakes
+  local d; d=$(new_case exit-run-step)
+  make_repo_on_branch "$d/wt" fm/feat-exit-g
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-g.meta" "window=fm:fm-feat-exit-g" "worktree=$d/wt" "kind=ship"
+  record_exit "$d/state" feat-exit-g 137
+  FM_FAKE_AXI_STATUS="$(run_running fm/feat-exit-g)"
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-g)
+  assert_contains "$out" "state: working" "the executing run still owns the work's state"
+  assert_contains "$out" "source: run-step" "the run-step stays the source"
+  assert_contains "$out" "signal 9" "the recorded driver death rides along as detail"
+  pass "a matching run-step keeps authority and carries the recorded exit as detail"
+}
+
+# A corrupt record is unreadable: never a clean exit, never done.
+test_corrupt_exit_record_stays_unknown() {
+  reset_fakes
+  local d; d=$(new_case exit-corrupt)
+  make_repo_on_branch "$d/wt" fm/feat-exit-h
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-exit-h.meta" "window=fm:fm-feat-exit-h" "worktree=$d/wt" "kind=ship"
+  printf 'this is not a record\n' > "$d/state/feat-exit-h.exit"
+  FM_FAKE_TMUX_MISSING=1
+  local out; out=$(run_crew_state "$d" feat-exit-h)
+  assert_contains "$out" "state: unknown" "a corrupt exit record proves no current work state"
+  assert_contains "$out" "agent exit record unreadable" "the corrupt record remains visible as unknown detail"
+  assert_not_contains "$out" "agent exited cleanly" "a corrupt record must never be read as a clean exit"
+  assert_not_contains "$out" "state: done" "a corrupt record must never be promoted to done"
+  pass "a corrupt exit record stays unknown"
+}
+
 test_captured_axi_status_shapes
 test_captured_inventory_replay
 test_captured_authority_transition
@@ -5740,5 +5905,13 @@ test_competing_live_runs_report_unknown_with_both_ids
 test_newer_failed_run_is_not_hidden_by_older_live_run
 test_unverifiable_run_selection_reports_unknown
 test_legacy_conflicting_run_records_report_unknown
+test_dead_window_reports_recorded_abnormal_exit
+test_abnormal_exit_outranks_stale_status_log_on_herdr
+test_live_busy_agent_outranks_a_stale_exit_record
+test_unverified_liveness_preserves_exit_without_false_failure
+test_armed_only_record_stays_unknown
+test_clean_exit_record_is_not_read_as_done
+test_run_step_keeps_authority_over_the_exit_record
+test_corrupt_exit_record_stays_unknown
 
 echo "all fm-crew-state tests passed"

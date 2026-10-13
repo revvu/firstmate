@@ -1804,6 +1804,16 @@ PROJ=
 ARG3=
 FIRSTMATE_HOME=
 RAW_LAUNCH=0
+# Retire the previous incarnation's agent exit record (bin/fm-exit-record.sh owns
+# the record) with a direct unlink, not a call out to that helper: retirement
+# must never become a hard prerequisite for spawning, and `rm -f` succeeds when
+# there is no record. A record that EXISTS and will not go is the real hazard -
+# a new incarnation reported under the previous one's recorded signal - so that
+# still refuses the spawn.
+if ! rm -f -- "$STATE/$ID.exit"; then
+  echo "error: prior agent exit record could not be retired for spawn $ID" >&2
+  exit 1
+fi
 
 # --relaunch adoption: every identity axis comes from the task's own validated
 # durable record, never from the command line, so a relaunch can only ever
@@ -5192,6 +5202,20 @@ if [ "$SPAWN_META_LOCK_HELD" != 1 ]; then
   fm_lock_acquire_wait "$SPAWN_META_LOCK"
   SPAWN_META_LOCK_HELD=1
 fi
+# Agent exit capture (bin/fm-exit-record.sh owns the record and its limits).
+# Arm the record now, so the task record below can say when a launch runs
+# without it; the recorder itself is appended to the launch line once that line
+# is final. A raw launch command is unverified shell text, so its status cannot
+# be safely attributed to the agent: those spawns run unwrapped and record
+# nothing, which reads as unknown rather than as a clean exit.
+EXIT_CAPTURE=off
+if [ "$RAW_LAUNCH" -eq 1 ]; then
+  echo "warning: raw launch command is unverified shell text; agent exit capture is off for $ID" >&2
+elif "$SCRIPT_DIR/fm-exit-record.sh" arm "$STATE_REAL" "$ID"; then
+  EXIT_CAPTURE=on
+else
+  echo "warning: agent exit capture could not be armed for $ID" >&2
+fi
 if [ "$RELAUNCH" -eq 1 ]; then
   SPAWN_META_TMP="$STATE/.$ID.meta.relaunch.${BASHPID:-$$}"
 else
@@ -5233,6 +5257,11 @@ preserve_relaunch_meta() {
   # default path's meta stays byte-identical (absent backend= means tmux;
   # data/fm-backend-design-d7's P1 compatibility contract).
   [ "$BACKEND" = tmux ] || echo "backend=$BACKEND"
+  # Only the OFF case is recorded, so an ordinary task's record stays
+  # byte-identical (the convention backend= and traceparent= follow). An absent
+  # exit record plus no exit_capture= line means the task predates exit capture;
+  # an absent record WITH this line means the spawn deliberately ran unwrapped.
+  [ "$EXIT_CAPTURE" = on ] || echo "exit_capture=off"
   if [ "$BACKEND" = herdr ]; then
     echo "herdr_session=$HERDR_SES"
     echo "herdr_workspace_id=$HERDR_WORKSPACE_ID"
@@ -5635,6 +5664,17 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
     LAUNCH_ENV_PREFIX="$LAUNCH_ENV_PREFIX "'${TRACEPARENT+"TRACEPARENT=$TRACEPARENT"}'
   fi
   LAUNCH="$LAUNCH_ENV_PREFIX /bin/sh -c $(shell_quote "$LAUNCH")"
+fi
+# Append the armed agent exit recorder to the final launch line, so the PANE
+# SHELL writes the agent's exit status the moment the agent returns - no
+# watcher, no poll, and one mechanism for every backend, because every backend
+# delivers this line through the same staged-launch path. `"$?"` is expanded
+# in the pane, by that shell, against the command that just finished; it must
+# stay literal here. The recorder is silenced and `|| true` so an
+# instrumentation failure can never change what the pane shows or leave a
+# nonzero status behind the agent.
+if [ "$EXIT_CAPTURE" = on ]; then
+  LAUNCH="$LAUNCH; $(shell_quote "$SCRIPT_DIR/fm-exit-record.sh") record $(shell_quote "$STATE_REAL") $(shell_quote "$ID") \"\$?\" >/dev/null 2>&1 || true"
 fi
 # Implement the launch-delivery contract in this script's header. The full
 # home-identity hash isolates equal task ids across homes, and the spawn token in
