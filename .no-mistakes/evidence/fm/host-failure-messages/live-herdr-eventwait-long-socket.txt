@@ -1,0 +1,17 @@
+## Live event subscriber via 163-byte path to lab fm-lab-longsock-81406-3278 (pane w1:p1)
+
+### BASE herdr-eventwait.py <long> 4 w1:p1, then report-agent --state working
+exit=2
+
+### HEAD herdr-eventwait.py <long> 4 w1:p1, then report-agent --state blocked
+@subscribed
+w1:p1	w1	blocked	claude
+exit=0
+
+### HEAD herdr-eventwait.py via short real path (/Users/reevuadakroy/.config/herdr/sessions/fm-lab-longsock-81406-3278/herdr.sock), report-agent --state idle
+@subscribed
+w1:p1	w1	idle	claude
+exit=0
+
+### HEAD eventwait adversarial: missing socket in long dir
+exit=2

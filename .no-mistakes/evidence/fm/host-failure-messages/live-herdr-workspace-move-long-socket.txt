@@ -1,0 +1,38 @@
+## Live Herdr lab session fm-lab-longsock-81406-3278 (herdr 0.9.3, python 3.9.6)
+Real lab socket: /Users/reevuadakroy/.config/herdr/sessions/fm-lab-longsock-81406-3278/herdr.sock
+Overlength path (163 bytes, Darwin AF_UNIX limit 104): /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fmlong.xZvY/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/herdr.sock -> symlink to real lab socket
+
+### workspace list before
+[{"workspace_id":"w2","label":"fmlab-b","number":1},{"workspace_id":"w1","label":"fmlab-a","number":2}]
+
+### BASE (6407052f) herdr-workspace-move.py <long> w1 0
+exit=2
+
+### HEAD herdr-workspace-move.py <long> w1 0
+[{"workspace_id":"w1","label":"fmlab-a"},{"workspace_id":"w2","label":"fmlab-b"}]
+exit=0
+
+### workspace list after base+head long-path moves (Herdr's own view)
+[{"workspace_id":"w1","label":"fmlab-a","number":1},{"workspace_id":"w2","label":"fmlab-b","number":2}]
+
+### HEAD mover via the short real path, w2 -> index 1
+[{"workspace_id":"w1","label":"fmlab-a"},{"workspace_id":"w2","label":"fmlab-b"}]
+exit=0
+
+### HEAD mover, adversarial path: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fmlong.xZvY/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/
+exit=2
+
+### HEAD mover, adversarial path: herdr.sock
+exit=2
+
+### HEAD mover, adversarial path: /var/folders/fq/70qmpff946l_64tdywk65z6c0000gn/T//fmlong.xZvY/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/nope.sock
+exit=2
+
+### HEAD mover, adversarial path: /nonexistent-fm-dir/herdr.sock
+exit=2
+
+### HEAD mover, adversarial: unknown workspace id w99 via long path
+exit=4
+
+### workspace list final
+[{"workspace_id":"w1","label":"fmlab-a","number":1},{"workspace_id":"w2","label":"fmlab-b","number":2}]
