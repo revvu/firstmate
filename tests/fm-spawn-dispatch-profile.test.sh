@@ -1640,7 +1640,7 @@ test_claude_secondmate_launch_omits_task_control_channel_authority() {
 }
 
 test_claude_long_launch_is_delivered_intact() {
-  local rec id out status launch expected
+  local rec id out status launch launch_kind expected
   id=profile-claude-long-launch-z24
   rec=$(make_spawn_case profile-claude-long-launch claude "$id")
   read_case_record "$rec"
@@ -1654,8 +1654,10 @@ test_claude_long_launch_is_delivered_intact() {
     || fail "Claude regression fixture is too short to cover the terminal line limit: ${#expected} bytes"
   [ "${#launch}" -gt 1024 ] \
     || fail "long Claude launch was truncated to ${#launch} bytes; staging must deliver the full command"
-  [ "$launch" = "$expected" ] \
-    || fail "long Claude launch was not delivered intact (${#launch}/${#expected} bytes)"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the long Claude launch line carried no agent exit recorder"
+  [ "$launch_kind" = "$expected" ] \
+    || fail "long Claude launch was not delivered intact (${#launch_kind}/${#expected} bytes)"
   pass "fm-spawn: a Claude launch longer than 1024 bytes is delivered intact through the staging path"
 }
 
