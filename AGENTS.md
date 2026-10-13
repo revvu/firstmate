@@ -377,6 +377,13 @@ Inspect the current task note before replacing its considered body, and archive 
 Verify volatile details against their authoritative config, live system, or API before acting, and correct or delete stale prose immediately.
 Preserve durable structured identifiers, dependencies, and completion artifact links, and route reusable knowledge to section 6 rather than scattering it through task notes.
 
+### Inbox as the work queue
+
+In this fork the captain's work queue is the Lavish inbox, `~/github/gallopify-playground/inbox/`, whose `README.md` table lists each page with its next step; work reaches firstmate through those pages, never through this backlog.
+This backlog is agent-owned bookkeeping only: file, move, and close rows for your own dispatch and completion tracking, and never ask the captain to groom it.
+It holds no captain holds: a decision goes back to its inbox page, not through `bin/fm-captain-hold.sh`, which this fork does not use; this supersedes the hold sentences above.
+Finished rows archive themselves: `tasks-axi done` prunes `## Done` to the tracked `done_keep = 10` into `data/done-archive.md`, so never hand-archive rows or raise that number.
+
 ## 11. Crewmate briefs
 
 `bin/fm-brief.sh` and its help own scaffold syntax, generated variants, status protocol, delivery-mode definitions of done, and exact safety mechanics.
