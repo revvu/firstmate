@@ -36,6 +36,7 @@ A non-zero exit tells the bash caller to fall back to plain polling for this
 cycle (the permanent fail-closed backstop), never to go silent.
 """
 import json
+import os
 import socket
 import sys
 import time
@@ -83,10 +84,13 @@ def main(argv):
     if not panes or timeout <= 0:
         return 2
 
+    socket_directory, socket_name = os.path.split(os.path.abspath(sock_path))
+
     try:
+        os.chdir(socket_directory)
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.settimeout(CONNECT_TIMEOUT)
-        sock.connect(sock_path)
+        sock.connect(socket_name)
     except OSError:
         return 2
 
