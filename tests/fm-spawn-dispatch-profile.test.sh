@@ -151,7 +151,9 @@ test_no_profile_keeps_claude_profile_defaults() {
 
   launch=$(cat "$LAUNCH_LOG")
   expected=$(claude_expected_launch "$launch" "$HOME_DIR" "$id" --dangerously-skip-permissions)
-  [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the claude launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
   pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
@@ -486,6 +488,56 @@ test_active_dispatch_profile_allows_raw_launch_command() {
   # else may rewrite the captain's own command.
   [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")$(ai_trailer_hooks_prefix "$HOME_DIR" "$id")custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
   pass "active crew-dispatch profile allows the raw launch-command escape hatch"
+}
+
+# A verified-adapter spawn arms the agent exit record (bin/fm-exit-record.sh)
+# before launch and appends the recorder to the staged launch line, so the pane
+# shell completes the record when the agent returns. The task record stays
+# byte-identical for that ordinary case: exit_capture= is written only when a
+# launch deliberately runs unwrapped.
+test_verified_launch_arms_exit_record() {
+  local rec id out status launch
+  id=exit-armed-z21
+  rec=$(make_spawn_case exit-armed claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "claude spawn should succeed"$'\n'"$out"
+  assert_not_contains "$out" "exit capture" "a verified launch must not warn about exit capture"
+  assert_present "$HOME_DIR/state/$id.exit" "a verified launch did not arm its exit record"
+  assert_grep 'armed_at=' "$HOME_DIR/state/$id.exit" "the armed record carries no arm time"
+  assert_no_grep 'exit_status=' "$HOME_DIR/state/$id.exit" "the record was completed before the agent ran"
+  assert_no_grep 'exit_capture=' "$HOME_DIR/state/$id.meta" "an armed launch must not mark exit capture off"
+  launch=$(cat "$LAUNCH_LOG")
+  fm_launch_kind "$launch" >/dev/null \
+    || fail "the staged launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  case "$launch" in
+    *"record '"*"/state' '$id' \"\$?\" >/dev/null 2>&1 || true") ;;
+    *) fail "the recorder must read the pane shell's own \$? for this task"$'\n'"actual:   $launch" ;;
+  esac
+  pass "a verified launch arms the exit record and appends the recorder"
+}
+
+# A raw launch command is unverified shell text, so its status cannot be
+# attributed to the agent: the spawn warns, records exit_capture=off, and arms
+# nothing, which reads as unknown rather than as a clean exit.
+test_raw_launch_disables_exit_capture() {
+  local rec id out status launch
+  id=exit-raw-z22
+  rec=$(make_spawn_case exit-raw claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" "custom-agent --flag" 2>&1)
+  status=$?
+  expect_code 0 "$status" "raw launch command spawn should succeed"$'\n'"$out"
+  assert_contains "$out" "agent exit capture is off" "a raw launch did not warn that capture was disabled"
+  assert_grep 'exit_capture=off' "$HOME_DIR/state/$id.meta" "a raw launch did not record disabled capture"
+  assert_absent "$HOME_DIR/state/$id.exit" "a raw launch unexpectedly armed an exit record"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_not_contains "$launch" "fm-exit-record.sh" "a raw launch must not carry the recorder"
+  pass "a raw launch command runs without exit capture and says so"
 }
 
 test_chained_raw_launch_strips_ai_trailer_in_every_step() {
@@ -2035,7 +2087,8 @@ claude_settings_json_arg() {  # <launch>
 }
 
 claude_launch_brief_arg() {  # <launch>
-  local command=$1
+  local command
+  command=$(fm_launch_kind "$1") || command=$1
   while [[ "$command" == export\ *\;* ]]; do
     command=${command#*; }
   done
@@ -2078,7 +2131,9 @@ test_claude_permission_mode_bypass_matches_absent_launch() {
   expect_code 0 "$status" "claude spawn with claude-permission-mode=bypass should succeed"
   launch=$(cat "$LAUNCH_LOG")
   expected=$(claude_expected_launch "$launch" "$HOME_DIR" "$id" --dangerously-skip-permissions)
-  [ "$launch" = "$expected" ] || fail "explicit bypass did not reproduce the absent-file launch"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the claude launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "$expected" ] || fail "explicit bypass did not reproduce the absent-file launch"$'\n'"expected: $expected"$'\n'"actual:   $launch"
   pass "config/claude-permission-mode=bypass launches exactly as an absent file does"
 }
 
@@ -2096,7 +2151,9 @@ test_claude_permission_mode_auto_swaps_only_the_permission_flag() {
   assert_contains "$out" "spawned $id harness=claude" "auto spawn did not report claude"
   launch=$(cat "$LAUNCH_LOG")
   expected=$(claude_expected_launch "$launch" "$HOME_DIR" "$id" '--permission-mode auto')
-  [ "$launch" = "$expected" ] || fail "auto changed more than the permission flag"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  launch_kind=$(fm_launch_kind "$launch") \
+    || fail "the claude launch line carried no agent exit recorder"$'\n'"actual:   $launch"
+  [ "$launch_kind" = "$expected" ] || fail "auto changed more than the permission flag"$'\n'"expected: $expected"$'\n'"actual:   $launch"
   assert_not_contains "$launch" "--dangerously-skip-permissions" "auto launch must not request bypass mode"
   pass "config/claude-permission-mode=auto replaces --dangerously-skip-permissions with --permission-mode auto"
 }
@@ -2205,6 +2262,8 @@ test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
 test_active_dispatch_profile_allows_positional_harness
 test_active_dispatch_profile_allows_raw_launch_command
+test_verified_launch_arms_exit_record
+test_raw_launch_disables_exit_capture
 test_chained_raw_launch_strips_ai_trailer_in_every_step
 test_claude_threads_model_and_effort
 test_codex_threads_model_and_effort

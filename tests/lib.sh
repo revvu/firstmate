@@ -777,6 +777,22 @@ fm_write_secondmate_meta() {
     "projects=$projects"
 }
 
+# --- spawn launch lines -----------------------------------------------------
+
+# fm_launch_kind <launch line>: print the launch command WITHOUT the agent exit
+# recorder that verified-adapter spawns append (bin/fm-exit-record.sh; its
+# behavior is owned by tests/fm-exit-capture-e2e.test.sh). Raw launch-command
+# spawns deliberately omit the recorder and therefore stay unknown. Use this
+# wherever a test pins the launch kind byte-for-byte. Returns 1 when the
+# recorder is absent, so stripping it can never quietly accept a verified launch
+# line that lost its exit capture.
+fm_launch_kind() {
+  local launch=$1 head
+  head=${launch%%"; '$ROOT/bin/fm-exit-record.sh' record "*}
+  [ "$head" != "$launch" ] || return 1
+  printf '%s' "$head"
+}
+
 # --- common assertions ------------------------------------------------------
 
 # assert_equals <expected> <actual> <msg>
