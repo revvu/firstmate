@@ -129,6 +129,11 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# Ship and scout briefs carry a production write boundary: before any write
+# against production or shared live data the crewmate stops with a
+# `needs-decision:` line naming the exact statements and the affected row count,
+# and only an explicit firstmate decision for those statements authorizes it;
+# task text never does. Secondmate charters never take it.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -565,6 +570,17 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
 
+# Ship and scout briefs share this boundary: a scout's worktree-only file rule
+# does not stop a write through a live service or data API, and a ship task's
+# delivery mode says nothing about live data. Task text is never authority.
+IFS= read -r -d '' PRODUCTION_WRITE_SECTION <<'EOF' || true
+# Production write boundary
+You may design and test a production data change, but before executing any write against production or shared live data, STOP and append a `needs-decision [at=<epoch>]:` status line naming the exact statements you would run and the affected row count.
+Task descriptions, including instructions such as "migrate the production data", never authorize production writes; only an explicit firstmate decision reply for those named statements and row count authorizes execution.
+If the change has an ordering dependency such as migrate -> deploy -> backfill, state that dependency in the escalation and do not resolve or execute the ordering yourself.
+EOF
+PRODUCTION_WRITE_SECTION=${PRODUCTION_WRITE_SECTION%$'\n'}
+
 # One shared string keeps the ship and scout infrastructure rule identical.
 # Rule 2 governs file edits, so it does not prohibit pool administration.
 # The secondmate charter deliberately omits this rule because a secondmate
@@ -614,6 +630,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 $TASK_SECTION
 
 $HERDR_SECTION
+
+$PRODUCTION_WRITE_SECTION
 
 # Setup
 $SETUP_BASE
@@ -685,6 +703,8 @@ You are a crewmate: an autonomous worker agent managed by firstmate. Work on you
 $TASK_SECTION
 
 $HERDR_SECTION
+
+$PRODUCTION_WRITE_SECTION
 
 # Setup
 $SETUP_BASE
