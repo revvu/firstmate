@@ -3186,6 +3186,61 @@ PY
   pass "Herdr workspace mover connects through an overlength absolute socket path without changing its exact request"
 }
 
+test_event_subscriber_connects_long_absolute_socket_path() {
+  local dir socket ready output server_pid i=0
+  command -v python3 >/dev/null 2>&1 || {
+    echo "skip: python3 not found for Herdr event subscriber long-socket regression"
+    return 0
+  }
+  dir="$TMP_ROOT/eventwait-long/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  socket="$dir/herdr.sock"
+  ready="$dir/ready"
+  mkdir -p "$dir"
+  [ "${#socket}" -gt 107 ] \
+    || fail "Herdr event subscriber regression did not create an AF_UNIX-overlength absolute path"
+  cat > "$dir/server.py" <<'PY'
+import json
+import os
+import socket
+
+os.chdir(os.environ["SERVER_DIR"])
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind("herdr.sock")
+server.listen(1)
+server.settimeout(5)
+open("ready", "w", encoding="utf-8").close()
+connection, _ = server.accept()
+with connection:
+    connection.settimeout(5)
+    payload = b""
+    while b"\n" not in payload:
+        payload += connection.recv(65536)
+    request = json.loads(payload.split(b"\n", 1)[0])
+    ack = {"id": request["id"], "result": {"type": "subscription_started"}}
+    event = {
+        "event": "pane.agent_status_changed",
+        "data": {"pane_id": "p1", "workspace_id": "w1", "agent_status": "blocked", "agent": "claude"},
+    }
+    connection.sendall((json.dumps(ack) + "\n" + json.dumps(event) + "\n").encode())
+    while connection.recv(65536):
+        pass
+server.close()
+PY
+  SERVER_DIR="$dir" python3 "$dir/server.py" &
+  server_pid=$!
+  while [ ! -e "$ready" ] && kill -0 "$server_pid" 2>/dev/null && [ "$i" -lt 500 ]; do
+    sleep 0.01
+    i=$((i + 1))
+  done
+  [ -e "$ready" ] || fail "Herdr event subscriber long-socket fixture did not become ready"
+  output=$(python3 "$ROOT/bin/backends/herdr-eventwait.py" "$socket" 1 p1) \
+    || fail "Herdr event subscriber failed to stream through an overlength socket path"
+  wait "$server_pid" || fail "Herdr event subscriber long-socket fixture server failed"
+  [ "$output" = "$(printf '@subscribed\np1\tw1\tblocked\tclaude')" ] \
+    || fail "Herdr event subscriber did not stream the long-socket event (got: $output)"
+  pass "Herdr event subscriber connects through an overlength absolute socket path"
+}
+
 test_projection_order_secondmate_parent_block() {
   local dir log resp fb mover mover_log out status
   dir="$TMP_ROOT/projection-order-secondmate"; mkdir -p "$dir/responses"
@@ -6057,6 +6112,7 @@ test_projection_seeded_prune_refuses_active_tab
 test_projection_label_builder_uses_corner_and_strips_owner_prefixes
 test_projection_order_moves_only_exact_new_workspace_and_preserves_relative_order
 test_workspace_mover_connects_long_absolute_socket_path
+test_event_subscriber_connects_long_absolute_socket_path
 test_projection_order_secondmate_parent_block
 test_projection_order_foreign_legacy_child_is_read_only
 test_projection_order_allows_intervening_parent_child_block
