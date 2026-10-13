@@ -34,11 +34,8 @@
     },
     {
       "when": "The task is an ordinary ship: a feature slice, bug fix, or refactor with clear acceptance criteria and limited ambiguity.",
-      "use": [
-        { "harness": "codex", "effort": "medium" },
-        { "harness": "cursor" }
-      ],
-      "why": "Implementation is Codex work; Cursor takes the slice when Codex headroom is tight and the slice is mechanical enough."
+      "use": { "harness": "cursor" },
+      "why": "Ordinary ships are speed-class work; Cursor takes them so Codex and Claude quota stay on frontier work, review, and judgment."
     },
     {
       "when": "The task is code review: adversarial review, a no-mistakes review pass, or a second opinion on code another model authored.",

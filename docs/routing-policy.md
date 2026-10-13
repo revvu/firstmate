@@ -9,8 +9,8 @@ The machine-readable copy is [`docs/examples/crew-dispatch.fleet.json`](examples
 | Tier | Who | Job |
 | --- | --- | --- |
 | Judgment | Claude **Fable** (`claude-fable-5-1`), then high-effort Opus | Design, architecture, and the clarifying questions the captain must answer |
-| Frontier implement | **Codex** | Big or ambiguous implementation, ordinary ships, adversarial and no-mistakes review |
-| Speed implement | **Cursor** (`cursor-agent`) | Chores, mechanical edits, UI/Paper/Lavish fan-out |
+| Frontier implement | **Codex** | Big or ambiguous implementation, adversarial and no-mistakes review |
+| Speed implement | **Cursor** (`cursor-agent`) | Chores, mechanical edits, ordinary ships, UI/Paper/Lavish fan-out |
 | Standing default | Claude **Opus** (pinned) | Anything no rule covers |
 
 Every Claude profile pins its model; nothing inherits the machine's ambient default.
@@ -24,7 +24,7 @@ Cursor has no effort flag, so Cursor profiles carry none.
 | Fan-out (rough variants, settled bulk edits) | Cursor, then Codex medium |
 | Chore (docs, CI hygiene, renames, formatting, bumps, one-file fixes) | Cursor, then Codex low |
 | Frontier implementation (ambiguous multi-file work, risky refactors) | Codex high, then Opus high |
-| Ordinary ship (clear acceptance criteria) | Codex medium, then Cursor |
+| Ordinary ship (clear acceptance criteria) | Cursor |
 | Code review (adversarial, no-mistakes, second opinion) | Codex high, then Opus high |
 | No rule matches | Opus |
 

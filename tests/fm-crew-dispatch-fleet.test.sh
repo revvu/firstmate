@@ -69,7 +69,7 @@ test_fleet_matrix_routes_each_class_as_the_captain_set() {
   local out expect
   out=$(rendered_matrix)
   # Codex profiles name no model, so bootstrap renders them as codex/default/<effort>.
-  expect=$'design, architecture, or a clarifying question -> quota-balanced[claude/claude-fable-5-1/high, claude/opus/high]\nfan-out work -> quota-balanced[cursor, codex/default/medium]\na chore -> quota-balanced[cursor, codex/default/low]\nfrontier implementation -> quota-balanced[codex/default/high, claude/opus/high]\nan ordinary ship -> quota-balanced[codex/default/medium, cursor]\ncode review -> quota-balanced[codex/default/high, claude/opus/high]\ndefault -> claude/opus'
+  expect=$'design, architecture, or a clarifying question -> quota-balanced[claude/claude-fable-5-1/high, claude/opus/high]\nfan-out work -> quota-balanced[cursor, codex/default/medium]\na chore -> quota-balanced[cursor, codex/default/low]\nfrontier implementation -> quota-balanced[codex/default/high, claude/opus/high]\nan ordinary ship -> cursor\ncode review -> quota-balanced[codex/default/high, claude/opus/high]\ndefault -> claude/opus'
   [ "$out" = "$expect" ] || fail "fleet routing matrix drifted"$'\n'"expected:"$'\n'"$expect"$'\n'"actual:"$'\n'"$out"
   pass "Cursor leads chores and fan-out, Codex leads implementation and review, Fable then Opus leads design, Opus is the default"
 }
