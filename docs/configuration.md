@@ -929,8 +929,13 @@ Both files are local and gitignored.
 
 ### File format and provider selection
 
-`config/claude-account` holds one line: `ordinary`, or the absolute path of an existing Claude config directory.
+`config/claude-account` holds one line: `ordinary`, `cswap`, or the absolute path of an existing Claude config directory.
 `config/pi-account` holds that same root on line 1 and, on line 2, the providers this home may spend, separated by spaces, for example `openai-codex anthropic`.
+
+`cswap` picks the root per launch: [`bin/fm-cswap-pick.sh`](../bin/fm-cswap-pick.sh) reads one `cswap list --json` and selects the enabled claude-swap account with the most remaining quota, the smallest of its 5-hour, 7-day, and, for a Fable model, Fable-window headroom.
+The active default login resolves as `ordinary`; any other account resolves to its cswap session profile, the same `CLAUDE_CONFIG_DIR` that `cswap run <number>` uses, prepared through `cswap run <number> --require-session` when it does not exist yet.
+The pick is reported and recorded as `account=cswap:<number>`, and the chosen root then takes the sign-in check and credential shedding below exactly as a literal path would.
+Firstmate never switches the default login, so a `cswap auto` loop keeps rotating it as before; cswap missing, listing no usable account, or failing to prepare the profile refuses the launch like any other unresolvable pin.
 
 A final newline is optional; any other line, a relative path, or a control character such as a CR refuses.
 For Claude, `ordinary` unsets `CLAUDE_CONFIG_DIR` rather than pointing it at `~/.claude`, because Claude reads `$CLAUDE_CONFIG_DIR/.claude.json` and keys its macOS Keychain entry to any directory that is set ([authentication, "Credential management"](https://code.claude.com/docs/en/authentication#credential-management)).

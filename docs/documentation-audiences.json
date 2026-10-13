@@ -341,6 +341,10 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/crew-dispatch.fleet.json",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/process-event-extension/file-signal.mjs",
       "audience": "operator-example"
     },
@@ -402,6 +406,10 @@
     },
     {
       "path": "docs/remote-secondmates.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/routing-policy.md",
       "audience": "operator-current"
     },
     {

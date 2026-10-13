@@ -22,6 +22,15 @@
 # one absolute path to an existing readable, searchable directory. Firstmate
 # never copies credentials or changes a global login.
 #
+# Claude alone also accepts `cswap`: the root is then chosen per launch by
+# bin/fm-cswap-pick.sh, the claude-swap account with the most remaining
+# quota, as `ordinary` when that is cswap's active default login or as that
+# account's cswap session profile directory otherwise. The pick is recorded as
+# `cswap:<number>`, and the chosen root then takes exactly the sign-in check
+# and credential shedding a literal path would. A pick that cannot be made
+# refuses the launch like any other unresolvable pin; the default login is
+# never switched, so a running `cswap auto` is left alone.
+#
 # A Pi root can hold several provider identities, so config/pi-account names
 # the root on line 1 and the providers that home may spend on line 2,
 # separated by spaces. A pinned Pi launch must name its provider explicitly as
@@ -53,8 +62,9 @@
 # and the check refuses a provider the root has not stored, so a pinned Pi
 # launch unsets nothing.
 
+FM_WORKER_ACCOUNT_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=bin/fm-timeout-lib.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-timeout-lib.sh"
+. "$FM_WORKER_ACCOUNT_LIB_DIR/fm-timeout-lib.sh"
 
 FM_WORKER_ACCOUNT_CHECK_SECONDS=${FM_WORKER_ACCOUNT_CHECK_SECONDS:-30}
 
@@ -76,7 +86,8 @@ fm_worker_account_file() {
 
 # fm_worker_account_read <harness> <file>
 # Prints "declared<TAB>providers" for a valid pin, where declared is
-# `ordinary` or the absolute path and providers is empty for Claude. The final
+# `ordinary`, the absolute path, or (Claude only) `cswap`, and providers is
+# empty for Claude. The final
 # newline is optional; any other control byte, including a CR, is malformed.
 # Parses bytes before the shell can drop NULs or trailing newlines; paths are
 # literal, never shell expressions. Returns 0 on success, 3 when the file does
@@ -94,7 +105,7 @@ fm_worker_account_read() {
     open(my $fh, "<", $f) or exit 5;
     my $body = do { local $/; <$fh> } // "";
     if ($harness eq "claude") {
-      $body =~ /\A(ordinary|\/[^\x00-\x1f\x7f]*)\n?\z/ or exit 6;
+      $body =~ /\A(ordinary|cswap|\/[^\x00-\x1f\x7f]*)\n?\z/ or exit 6;
       print $1, "\t";
     } else {
       $body =~ /\A(ordinary|\/[^\x00-\x1f\x7f]*)\n([A-Za-z0-9][A-Za-z0-9._-]*(?: +[A-Za-z0-9][A-Za-z0-9._-]*)*)\n?\z/ or exit 6;
@@ -103,14 +114,16 @@ fm_worker_account_read() {
   ' -- "$1" "$2"
 }
 
-# fm_worker_account_resolve <harness> <config-dir>
+# fm_worker_account_resolve <harness> <config-dir> [<model>]
 # Prints "declared<TAB>root<TAB>providers" for a valid pin, where root is the
 # directory the launch selects (empty for ordinary Claude, meaning
-# CLAUDE_CONFIG_DIR unset). Prints nothing and returns 0 when the runner is
-# not pinnable or the home has no pin. On refusal prints one error naming the
-# file and returns 1.
+# CLAUDE_CONFIG_DIR unset). A Claude `cswap` pin resolves through
+# bin/fm-cswap-pick.sh with the launch model, so a Fable model counts the
+# Fable window, and reports declared as `cswap:<number>`. Prints nothing and
+# returns 0 when the runner is not pinnable or the home has no pin. On
+# refusal prints one error naming the file and returns 1.
 fm_worker_account_resolve() {
-  local harness=$1 config=$2 file cfg token rc declared root fallback
+  local harness=$1 config=$2 model=${3:-} file cfg token rc declared root fallback pick
   file=$(fm_worker_account_file "$harness") || return 0
   cfg="$config/$file"
   token=$(fm_worker_account_read "$harness" "$cfg")
@@ -127,19 +140,34 @@ fm_worker_account_resolve() {
     if [ "$file" = pi-account ]; then
       echo "error: config/$file must hold 'ordinary' or one absolute path on line 1 and the providers this home may spend on line 2, separated by spaces, with no other lines or control characters: $cfg" >&2
     else
-      echo "error: config/$file must hold 'ordinary' or one absolute path on a single line with no control characters: $cfg" >&2
+      echo "error: config/$file must hold 'ordinary', 'cswap', or one absolute path on a single line with no control characters: $cfg" >&2
     fi
     return 1
     ;;
   esac
   declared=${token%%$'\t'*}
-  root=$declared
+  if [ "$declared" = cswap ]; then
+    local errfile reason
+    errfile=$(mktemp) || return 1
+    pick=$("$FM_WORKER_ACCOUNT_LIB_DIR/fm-cswap-pick.sh" ${model:+--model "$model"} 2>"$errfile")
+    rc=$?
+    reason=$(head -1 "$errfile")
+    rm -f "$errfile"
+    if [ "$rc" -ne 0 ] || [ -z "$pick" ]; then
+      echo "error: config/$file selects cswap, but no claude-swap account could be picked (${reason#error: }); repair cswap or change the pin: $cfg" >&2
+      return 1
+    fi
+    declared="cswap:${pick%%$'\t'*}"
+    root=${pick##*$'\t'}
+  else
+    root=$declared
+  fi
   # shellcheck disable=SC2088  # The fallbacks are literal text for the refusal.
   case "$harness" in
   claude) fallback='~/.claude with CLAUDE_CONFIG_DIR unset' ;;
   *) fallback='~/.pi/agent' ;;
   esac
-  if [ "$declared" = ordinary ]; then
+  if [ "$root" = ordinary ]; then
     case "$harness" in
     claude) root= ;;
     *) root="${HOME:?HOME is required to resolve an ordinary Pi account}/.pi/agent" ;;
@@ -227,7 +255,7 @@ fm_worker_account_check() {
 # agent.
 fm_worker_account_select() {
   local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} selection declared root providers word provider=
-  selection=$(fm_worker_account_resolve "$harness" "$config") || return 1
+  selection=$(fm_worker_account_resolve "$harness" "$config" "$model") || return 1
   [ -n "$selection" ] || return 0
   declared=${selection%%$'\t'*}
   root=${selection#*$'\t'}
