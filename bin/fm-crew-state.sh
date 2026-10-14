@@ -24,7 +24,11 @@
 # Output is one stable, parseable, token-tight line firstmate can read every
 # heartbeat:
 #
-#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|none> · <detail>
+#   state: <working|parked|done|blocked|paused|failed|unknown> · source: <run-step|pane|status-log|remote-endpoint|exit-record|none> · <detail>
+#
+# `failed · exit-record` is the one state that does not describe the WORK: it
+# means the launched agent PROCESS terminated abnormally and firstmate has the
+# recorded status or signal (bin/fm-exit-record.sh owns that record).
 #
 # Logic, in order:
 #   1. Resolve worktree + backend target + kind from state/<id>.meta. A meta
@@ -148,9 +152,15 @@
 #      backend's pane busy state, then the resolved status declaration
 #      when its verb maps to a recognized run-state. Decision-only events such as
 #      `resolved` never become current state or detail.
-#   5. Missing meta or torn-down worktree: report unknown · none. If no run is
-#      attributed to this crew, a dead endpoint also reports unknown · none rather
-#      than trusting a stale status log. On tmux and herdr, which own a
+#   5. Recorded agent exit: an abnormal exit with confirmed dead or missing
+#      agent liveness becomes failed · exit-record, outranking the endpoint and
+#      status log alike. Unverifiable liveness becomes unknown · exit-record;
+#      verified live or newer lifecycle evidence makes the record historical.
+#      A run-step remains authoritative and carries the exit as detail. An
+#      absent, armed-only, unreadable, or clean record never proves success.
+#   6. Missing meta or torn-down worktree: report unknown · none. If no run is
+#      attributed to this crew and no exit was recorded, a dead endpoint also
+#      reports unknown · none rather than trusting a stale status log. On tmux and herdr, which own a
 #      recovery-grade classifier, only its positive death evidence reads as gone
 #      (the endpoint is authoritatively absent, or its pane holds no agent); an
 #      endpoint that merely failed to answer reports unknown · none as
@@ -245,9 +255,9 @@ fi
 emit_ship_status_done() {  # [extra-detail]
   local extra=${1:-} reason
   if reason=$(fm_dod_accept_ship_done "$KIND" "$(meta_value mode)" "$WT" "$(meta_value project)" "$LOG_LINE" "$STATE" "$ID" "$META"); then
-    emit "done" status-log "$(status_line_note "$LOG_LINE")${extra:+${SEP}$extra}"
+    exit_emit "done" status-log "$(status_line_note "$LOG_LINE")${extra:+${SEP}$extra}"
   fi
-  emit blocked status-log "$reason"
+  exit_emit blocked status-log "$reason"
 }
 
 map_log_state() {  # <line>
@@ -315,6 +325,87 @@ fi
 # herdr task is read through fm_backend_capture instead of a bare tmux probe.
 TASK_BACKEND=$(fm_backend_of_meta "$META")
 BACKEND_TARGET=$(fm_backend_target_of_meta "$META")
+
+# --- recorded agent exit ----------------------------------------------------
+# The one source that survives the agent's own death (bin/fm-exit-record.sh owns
+# the record, its lifecycle states, and the signal-derivation limit). Before it
+# existed, a process disappearance left no first-party termination evidence. A
+# cheap file read, so it runs on every call; `none`, `armed`, and `unreadable`
+# never establish a clean exit.
+EXIT_BIN="$SCRIPT_DIR/fm-exit-record.sh"
+EXIT_DISPOSITION=none
+EXIT_DETAIL=""
+if [ -x "$EXIT_BIN" ]; then
+  IFS=$'\t' read -r EXIT_DISPOSITION EXIT_DETAIL \
+    < <("$EXIT_BIN" show "$STATE" "$ID" 2>/dev/null) || true
+  [ -n "$EXIT_DISPOSITION" ] || EXIT_DISPOSITION=none
+fi
+AGENT_STATE=
+
+# A recorded abnormal exit describes the incarnation that spawn armed. A
+# verified live agent or a newer semantic lifecycle event makes it historical.
+# A backend that cannot distinguish a live agent from its surviving endpoint
+# stays unknown while preserving the exit evidence instead of claiming either.
+exit_record_relation() {
+  local agent_state=$AGENT_STATE
+  [ "$EXIT_DISPOSITION" = recorded-abnormal ] || { printf 'historical'; return 0; }
+  [ -n "${BACKEND_TARGET:-}" ] || { printf 'current'; return 0; }
+  if [ -z "$agent_state" ]; then
+    case "$TASK_BACKEND" in
+      tmux|herdr) agent_state=$(fm_backend_agent_state "$TASK_BACKEND" "$BACKEND_TARGET" 2>/dev/null || true) ;;
+    esac
+  fi
+  case "$agent_state" in
+    alive) printf 'historical'; return 0 ;;
+    dead|missing) printf 'current'; return 0 ;;
+  esac
+  if [ "$STATE/$ID.busy-state" -nt "$STATE/$ID.exit" ] \
+     || [ "$STATE/$ID.turn-ended" -nt "$STATE/$ID.exit" ]; then
+    printf 'historical'
+  else
+    printf 'ambiguous'
+  fi
+}
+
+detail_with_exit() {  # [detail]
+  local detail=${1:-}
+  if [ "$EXIT_DISPOSITION" != armed ] && [ -n "$EXIT_DETAIL" ]; then
+    if [ -n "$detail" ]; then detail="$detail${SEP}$EXIT_DETAIL"; else detail=$EXIT_DETAIL; fi
+  fi
+  printf '%s' "$detail"
+}
+
+emit_exit_if_authoritative() {
+  case "$(exit_record_relation)" in
+    current) emit failed exit-record "$EXIT_DETAIL" ;;
+    ambiguous) emit unknown exit-record "$EXIT_DETAIL${SEP}current agent liveness unverified" ;;
+  esac
+}
+
+# emit(), except that the recorded exit is never lost: a current abnormal exit
+# becomes the verdict, and any other readable record rides along as extra detail
+# behind the caller's own. Used on the no-run fallback path.
+emit_with_exit() {  # <state> <source> [detail]
+  local detail=${3:-}
+  emit_exit_if_authoritative
+  detail=$(detail_with_exit "$detail")
+  emit "$1" "$2" "$detail"
+}
+
+# A matching run owns the WORK's state even when its driver process exited:
+# the separate process fact is carried as detail without replacing the run or
+# CI-ready verdict, so "the pipeline is still running but its driver died" is
+# visible in one read instead of requiring a second investigation.
+emit_run_authoritative() {  # <state> <source> [detail]
+  local detail=${3:-}
+  detail=$(detail_with_exit "$detail")
+  emit "$1" "$2" "$detail"
+}
+
+# The shared status-log emitter above routes through whichever of the two the
+# current path selects; the remote-secondmate arm keeps the plain emit.
+EXIT_EMIT=emit
+exit_emit() { "$EXIT_EMIT" "$@"; }
 EXPECTED_LABEL="fm-$ID"
 pane_readable() {  # <target>
   case "$TASK_BACKEND" in
@@ -1077,6 +1168,7 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
 fi
 
 # --- run-step authoritative path -------------------------------------------
+EXIT_EMIT=emit_run_authoritative
 
 if [ "$HAVE_RUN" = 1 ]; then
   RUN_STATE=working
@@ -1258,7 +1350,7 @@ if [ "$HAVE_RUN" = 1 ]; then
   esac
 
   [ -z "$SELECTED_RUN_ID" ] || RUN_DETAIL="$RUN_DETAIL${SEP}run: $SELECTED_RUN_ID"
-  emit "$RUN_STATE" run-step "$RUN_DETAIL"
+  emit_run_authoritative "$RUN_STATE" run-step "$RUN_DETAIL"
 fi
 
 # --- fallback: no run attributed to this crew ------------------------------
@@ -1269,7 +1361,8 @@ fi
 # both classifier-backed backends (tmux and herdr) - and every death-class
 # verdict reports unknown rather than trusting a possibly-stale status log as
 # the current state.
-[ -n "$BACKEND_TARGET" ] || emit unknown none "no backend target recorded"
+EXIT_EMIT=emit_with_exit
+[ -n "$BACKEND_TARGET" ] || emit_with_exit unknown none "no backend target recorded"
 if ! pane_readable "$BACKEND_TARGET"; then
   # A failed probe is not itself evidence the pane is gone: the herdr CLI can
   # error or stall under load, and tmux can fail to be executed at all (a
@@ -1305,16 +1398,16 @@ if ! pane_readable "$BACKEND_TARGET"; then
     tmux:alive|herdr:alive)
       ;;
     tmux:missing|herdr:missing)
-      emit unknown none "backend target gone: $BACKEND_TARGET"
+      emit_with_exit unknown none "backend target gone: $BACKEND_TARGET"
       ;;
     tmux:dead|herdr:dead)
-      emit unknown none "backend target gone: $BACKEND_TARGET (agent gone, pane shell remains)"
+      emit_with_exit unknown none "backend target gone: $BACKEND_TARGET (agent gone, pane shell remains)"
       ;;
     tmux:*|herdr:*)
-      emit unknown none "backend unreachable ($TASK_BACKEND endpoint state: $AGENT_STATE)"
+      emit_with_exit unknown none "backend unreachable ($TASK_BACKEND endpoint state: $AGENT_STATE)"
       ;;
     *)
-      emit unknown none "backend target gone: $BACKEND_TARGET"
+      emit_with_exit unknown none "backend target gone: $BACKEND_TARGET"
       ;;
   esac
 fi
@@ -1327,11 +1420,16 @@ fi
 if [ "$KIND" != secondmate ]; then
   BUSY_VERDICT=$(crew_busy_verdict "$BACKEND_TARGET")
   case "${BUSY_VERDICT%% *}" in
-    busy) emit working pane "harness busy (${BUSY_VERDICT#* })" ;;
+    busy) emit_with_exit working pane "harness busy (${BUSY_VERDICT#* })" ;;
     idle) ;;
-    *) emit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
+    *) emit_with_exit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
   esac
 fi
+
+# A recorded abnormal exit outranks the status log: the log's last line is an
+# event the crew appended while it was still alive, so it can only ever describe
+# what the crew was doing BEFORE the process died.
+emit_exit_if_authoritative
 
 # Fall back to the resolved status declaration, but ONLY when its verb maps to a real
 # run-state. A decision-closing event - resolved: (fm-classify-lib.sh's
@@ -1349,8 +1447,8 @@ if [ -n "$LOG_VERB" ]; then
   fi
   LOG_STATE=$(map_log_state "$LOG_LINE")
   if [ "$LOG_STATE" != unknown ]; then
-    emit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
+    emit_with_exit "$LOG_STATE" status-log "$(status_line_note "$LOG_LINE")"
   fi
 fi
 
-emit unknown none "no current-state source available"
+emit_with_exit unknown none "no current-state source available"

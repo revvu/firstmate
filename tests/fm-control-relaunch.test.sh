@@ -1401,6 +1401,57 @@ test_launch_failure_keeps_the_prior_record_and_reports_it() {
   pass "fm-control relaunch: a launch failure after the stop keeps the prior record and reports the real state"
 }
 
+test_launch_failure_keeps_the_prior_exit_record() {
+  local dir out rc before
+  dir=$(new_case exit-rollback rl61)
+  add_ship_task "$dir" rl61 claude
+  "$ROOT/bin/fm-exit-record.sh" arm "$dir/home/state" rl61
+  "$ROOT/bin/fm-exit-record.sh" record "$dir/home/state" rl61 137
+  before=$(cat "$dir/home/state/rl61.exit")
+  printf '%s' "$dir/proj" > "$dir/fake/cwd"
+  out=$(run_control "$dir" rl61 relaunch --harness codex --note "carry this forward"); rc=$?
+  expect_code 1 "$rc" "a failed launch should fail closed"$'\n'"$out"
+  [ "$(cat "$dir/home/state/rl61.exit" 2>/dev/null)" = "$before" ] \
+    || fail "a refused relaunch must keep the prior incarnation's exit record"
+  pass "fm-control relaunch: a refused relaunch keeps the prior agent exit record"
+}
+
+test_relaunch_rearms_exit_capture_without_the_stale_off_line() {
+  local dir out rc
+  dir=$(new_case exit-rearm rl62)
+  add_ship_task "$dir" rl62 claude
+  echo "exit_capture=off" >> "$dir/home/state/rl62.meta"
+  "$ROOT/bin/fm-exit-record.sh" record "$dir/home/state" rl62 1
+  out=$(run_control "$dir" rl62 relaunch --note "continue"); rc=$?
+  expect_code 0 "$rc" "a relaunch should succeed"$'\n'"$out"
+  assert_no_grep 'exit_capture=' "$dir/home/state/rl62.meta" \
+    "an armed relaunch must not carry the previous incarnation's exit_capture=off"
+  assert_grep 'armed_at=' "$dir/home/state/rl62.exit" "the relaunch did not arm a fresh exit record"
+  assert_grep 'fm-exit-record.sh' "$dir/fake/literal" "an armed relaunch must carry the recorder"
+  assert_no_grep 'exit_status=' "$dir/home/state/rl62.exit" \
+    "the previous incarnation's recorded exit survived the relaunch"
+  pass "fm-control relaunch: a relaunch re-arms exit capture and drops the stale off line"
+}
+
+test_arm_failure_runs_unwrapped_and_says_so() {
+  local dir out rc real_mv record
+  dir=$(new_case exit-arm-fail rl63)
+  add_ship_task "$dir" rl63 claude
+  "$ROOT/bin/fm-exit-record.sh" record "$dir/home/state" rl63 1
+  record="$(cd "$dir/home/state" && pwd -P)/rl63.exit"
+  real_mv=$(command -v mv)
+  make_mv_failure_stub "$dir"
+  out=$(FM_REAL_MV="$real_mv" FM_FAKE_META_PUBLISH_MV_FAIL="$record" \
+    run_control "$dir" rl63 relaunch --note "continue"); rc=$?
+  expect_code 0 "$rc" "a relaunch whose exit capture cannot be armed should still succeed"$'\n'"$out"
+  assert_contains "$out" "agent exit capture could not be armed" "the arm failure was not reported"
+  [ "$(grep -c '^exit_capture=off$' "$dir/home/state/rl63.meta")" = 1 ] \
+    || fail "an unarmed relaunch must record exit_capture=off exactly once"
+  assert_absent "$dir/home/state/rl63.exit" "the previous incarnation's exit record survived an unarmed relaunch"
+  assert_no_grep 'fm-exit-record.sh' "$dir/fake/literal" "an unarmed launch must not carry the recorder"
+  pass "fm-control relaunch: an unarmed relaunch runs without the recorder and says so in its record"
+}
+
 test_prepublication_failure_keeps_concurrent_durable_metadata() {
   local dir control_pid link_out rc i=0
   dir=$(new_case rollback-race rl30)
@@ -2572,6 +2623,9 @@ test_missing_instructions_refuse_before_stopping_anything
 test_checkpoint_refusal_leaves_the_record_byte_identical
 test_checkpoint_refuses_uninspectable_head_and_status
 test_launch_failure_keeps_the_prior_record_and_reports_it
+test_launch_failure_keeps_the_prior_exit_record
+test_relaunch_rearms_exit_capture_without_the_stale_off_line
+test_arm_failure_runs_unwrapped_and_says_so
 test_prepublication_failure_keeps_concurrent_durable_metadata
 test_post_publication_launch_failure_keeps_the_new_record
 test_stop_transport_failure_reconciles_a_dead_agent
