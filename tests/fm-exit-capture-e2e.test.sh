@@ -138,7 +138,7 @@ SH
 
 write_brief() {  # <home> <id>
   mkdir -p "$1/data/$2"
-  printf 'Delivery contract: mode=no-mistakes\nStand-in brief for %s.\n' "$2" > "$1/data/$2/brief.md"
+  printf "Delivery contract: mode=no-mistakes\n# Task\n## Captain's intent\nStand-in brief for %s.\n\n## Firstmate spec\nRun until killed.\n" "$2" > "$1/data/$2/brief.md"
 }
 
 spawn_agent() {  # <home> <project> <fakebin> <id>
